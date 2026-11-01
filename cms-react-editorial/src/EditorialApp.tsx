@@ -202,7 +202,7 @@ export function EditorialApp(): React.ReactElement {
     window.addEventListener('media:selected',onMediaSelected);window.addEventListener('storage',onStorage);applySelection(readMediaSelection());
     return()=>{window.removeEventListener('media:selected',onMediaSelected);window.removeEventListener('storage',onStorage);};
   },[]);
-  useEffect(()=>{let objectUrl='';const reference=view==='preview'&&activeArticle?activeArticle.coverMediaReference:editor.coverMediaReference;const id=mediaId(reference);if(!id){setCoverMediaPreview(reference);return;}readMediaBlob(id).then(blob=>{if(blob){objectUrl=URL.createObjectURL(blob);setCoverMediaPreview(objectUrl);}else setCoverMediaPreview(''));}).catch(()=>setCoverMediaPreview(''));return()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};},[editor.coverMediaReference,view,activeArticle?.coverMediaReference]);
+  useEffect(()=>{let objectUrl='';const reference=view==='preview'&&activeArticle?activeArticle.coverMediaReference:editor.coverMediaReference;const id=mediaId(reference);if(!id){setCoverMediaPreview(reference);return;}readMediaBlob(id).then(blob=>{if(blob){objectUrl=URL.createObjectURL(blob);setCoverMediaPreview(objectUrl);}else setCoverMediaPreview('');}).catch(()=>setCoverMediaPreview(''));return()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};},[editor.coverMediaReference,view,activeArticle?.coverMediaReference]);
 
   useEffect(() => {
     if (view !== 'editor') return;
