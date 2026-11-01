@@ -181,6 +181,7 @@ export function EditorialApp(): React.ReactElement {
   const [role, setRole] = useState('Contributor');
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [coverMediaPreview,setCoverMediaPreview]=useState('');
+  const [pendingMediaSelection,setPendingMediaSelection]=useState<any>(null);
 
   useEffect(() => {
     const session = getSession();
@@ -195,13 +196,13 @@ export function EditorialApp(): React.ReactElement {
   }, []);
 
   useEffect(() => {
-    const applySelection=(selection:any)=>{if(!selection||typeof selection.reference!=='string'||!selection.reference)return;setEditor(current=>({...current,coverMediaReference:selection.reference}));setOriginalEditor(current=>({...current,coverMediaReference:selection.reference}));setMessage('Cover image selected: '+(selection.name||'Media asset')+'.');setError('');};
+    const applySelection=(selection:any)=>{if(!selection||typeof selection.reference!=='string'||!selection.reference)return;setPendingMediaSelection(selection);setEditor(current=>({...current,coverMediaReference:selection.reference}));setMessage('Cover image selected: '+(selection.name||'Media asset')+'.');setError('');localStorage.removeItem(MEDIA_SELECTION_KEY);};
     const onMediaSelected=(event:Event)=>applySelection((event as CustomEvent).detail||readMediaSelection());
     const onStorage=(event:StorageEvent)=>{if(event.key===MEDIA_SELECTION_KEY)applySelection(readMediaSelection());};
     window.addEventListener('media:selected',onMediaSelected);window.addEventListener('storage',onStorage);applySelection(readMediaSelection());
     return()=>{window.removeEventListener('media:selected',onMediaSelected);window.removeEventListener('storage',onStorage);};
   },[]);
-  useEffect(()=>{let objectUrl='';const id=mediaId(editor.coverMediaReference);if(!id){setCoverMediaPreview(editor.coverMediaReference);return;}readMediaBlob(id).then(blob=>{if(blob){objectUrl=URL.createObjectURL(blob);setCoverMediaPreview(objectUrl);}else setCoverMediaPreview('');}).catch(()=>setCoverMediaPreview(''));return()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};},[editor.coverMediaReference]);
+  useEffect(()=>{let objectUrl='';const reference=view==='preview'&&activeArticle?activeArticle.coverMediaReference:editor.coverMediaReference;const id=mediaId(reference);if(!id){setCoverMediaPreview(reference);return;}readMediaBlob(id).then(blob=>{if(blob){objectUrl=URL.createObjectURL(blob);setCoverMediaPreview(objectUrl);}else setCoverMediaPreview(''));}).catch(()=>setCoverMediaPreview(''));return()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};},[editor.coverMediaReference,view,activeArticle?.coverMediaReference]);
 
   useEffect(() => {
     if (view !== 'editor') return;
@@ -256,9 +257,11 @@ export function EditorialApp(): React.ReactElement {
 
   const openEditor = (article?: Article) => {
     const next = article ? toEditorState(article) : emptyEditor;
+    const selected = pendingMediaSelection?.reference ? { ...next, coverMediaReference: pendingMediaSelection.reference } : next;
     setActiveArticle(article || null);
-    setEditor(next);
+    setEditor(selected);
     setOriginalEditor(next);
+    if (pendingMediaSelection) { setPendingMediaSelection(null); localStorage.removeItem(MEDIA_SELECTION_KEY); }
     setMessage('');
     setError('');
     setView('editor');
