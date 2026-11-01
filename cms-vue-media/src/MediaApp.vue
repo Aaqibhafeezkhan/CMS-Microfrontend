@@ -42,7 +42,7 @@ export default {
     totalBytes(): number { return this.assets.reduce((total: number, asset: Asset) => total + asset.bytes, 0); },
     hasFilters(): boolean { return Boolean(this.search || this.typeFilter !== 'all' || this.sortBy !== 'newest'); }
   },
-  async mounted() { try { this.assets = readAssets(); for (const asset of this.assets) { const id = mediaAssetId(asset.url); if (id) { const blob = await readMediaBlob(id); if (blob) this.$set(this.previewUrls, asset.id, URL.createObjectURL(blob)); else this.error = 'The original file for ' + asset.name + ' is missing from browser media storage.'; } } } catch { this.assets = []; this.error = 'The stored media library could not be read. Existing browser data was not overwritten.'; } finally { this.loading = false; } },
+  mounted() { const vm = this as any; void (async () => { try { vm.assets = readAssets(); for (const asset of vm.assets) { const id = mediaAssetId(asset.url); if (id) { const blob = await readMediaBlob(id); if (blob) vm.$set(vm.previewUrls, asset.id, URL.createObjectURL(blob)); else vm.error = 'The original file for ' + asset.name + ' is missing from browser media storage.'; } } } catch { vm.assets = []; vm.error = 'The stored media library could not be read. Existing browser data was not overwritten.'; } finally { vm.loading = false; } })(); },
   beforeDestroy() { Object.values(this.previewUrls).forEach(url => URL.revokeObjectURL(url)); },
   methods: {
     saveAssets(): boolean { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.assets)); this.error = ''; return true; } catch { this.error = 'The media library could not be saved. Browser storage may be unavailable or full.'; return false; } },
