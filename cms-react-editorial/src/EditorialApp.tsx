@@ -39,6 +39,10 @@ interface EditorState {
 }
 
 const STORAGE_KEY = 'cms_articles';
+const MEDIA_SELECTION_KEY='cms_media_selection'; const MEDIA_DB='cms-media-library';
+function readMediaBlob(id:string):Promise<Blob|null>{return new Promise((resolve,reject)=>{const req=indexedDB.open(MEDIA_DB,1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('assets'))req.result.createObjectStore('assets',{keyPath:'id'});};req.onerror=()=>reject(req.error);req.onsuccess=()=>{const db=req.result;const read=db.transaction('assets','readonly').objectStore('assets').get(id);read.onsuccess=()=>{const blob=read.result?.blob||null;db.close();resolve(blob);};read.onerror=()=>{db.close();reject(read.error);};};});}
+function mediaId(reference:string):string|null{return reference.startsWith('media://')?reference.slice(8):null;}
+function readMediaSelection():any|null{try{return JSON.parse(localStorage.getItem(MEDIA_SELECTION_KEY)||'null');}catch{return null;}}
 const SESSION_KEY = 'cms_session';
 const ARTICLE_EVENTS: Record<string, string> = {
   created: 'article:created',
@@ -176,6 +180,8 @@ export function EditorialApp(): React.ReactElement {
   const [sortAscending, setSortAscending] = useState(false);
   const [role, setRole] = useState('Contributor');
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [coverMediaPreview,setCoverMediaPreview]=useState('');
+  const [pendingMediaSelection,setPendingMediaSelection]=useState<any>(null);
 
   useEffect(() => {
     const session = getSession();
@@ -188,6 +194,15 @@ export function EditorialApp(): React.ReactElement {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const applySelection=(selection:any)=>{if(!selection||typeof selection.reference!=='string'||!selection.reference)return;setPendingMediaSelection(selection);setEditor(current=>({...current,coverMediaReference:selection.reference}));setMessage('Cover image selected: '+(selection.name||'Media asset')+'.');setError('');localStorage.removeItem(MEDIA_SELECTION_KEY);};
+    const onMediaSelected=(event:Event)=>applySelection((event as CustomEvent).detail||readMediaSelection());
+    const onStorage=(event:StorageEvent)=>{if(event.key===MEDIA_SELECTION_KEY)applySelection(readMediaSelection());};
+    window.addEventListener('media:selected',onMediaSelected);window.addEventListener('storage',onStorage);applySelection(readMediaSelection());
+    return()=>{window.removeEventListener('media:selected',onMediaSelected);window.removeEventListener('storage',onStorage);};
+  },[]);
+  useEffect(()=>{let objectUrl='';const reference=view==='preview'&&activeArticle?activeArticle.coverMediaReference:editor.coverMediaReference;const id=mediaId(reference);if(!id){setCoverMediaPreview(reference);return;}readMediaBlob(id).then(blob=>{if(blob){objectUrl=URL.createObjectURL(blob);setCoverMediaPreview(objectUrl);}else setCoverMediaPreview('');}).catch(()=>setCoverMediaPreview(''));return()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};},[editor.coverMediaReference,view,activeArticle?.coverMediaReference]);
 
   useEffect(() => {
     if (view !== 'editor') return;
@@ -242,9 +257,11 @@ export function EditorialApp(): React.ReactElement {
 
   const openEditor = (article?: Article) => {
     const next = article ? toEditorState(article) : emptyEditor;
+    const selected = pendingMediaSelection?.reference ? { ...next, coverMediaReference: pendingMediaSelection.reference } : next;
     setActiveArticle(article || null);
-    setEditor(next);
+    setEditor(selected);
     setOriginalEditor(next);
+    if (pendingMediaSelection) { setPendingMediaSelection(null); localStorage.removeItem(MEDIA_SELECTION_KEY); }
     setMessage('');
     setError('');
     setView('editor');
@@ -465,7 +482,7 @@ export function EditorialApp(): React.ReactElement {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}><span className="status-badge" style={{ background: '#eef2ff' }}>{activeArticle.status}</span><button onClick={() => setView('list')}>Back to articles</button></div>
           <h1 style={{ fontSize: '2.4rem', marginBottom: '.5rem' }}>{activeArticle.title}</h1>
           <p style={{ color: 'var(--text-muted)' }}>{activeArticle.excerpt}</p>
-          {activeArticle.coverMediaReference && <div style={{ margin: '1.5rem 0' }}><img src={activeArticle.coverMediaReference} alt={activeArticle.title} style={{ maxWidth: '100%', maxHeight: '420px', objectFit: 'cover', borderRadius: '12px' }} /></div>}
+          {activeArticle.coverMediaReference && <div style={{ margin: '1.5rem 0' }}><img src={mediaId(activeArticle.coverMediaReference) ? coverMediaPreview : activeArticle.coverMediaReference} alt={activeArticle.title} style={{ maxWidth: '100%', maxHeight: '420px', objectFit: 'cover', borderRadius: '12px' }} /></div>}
           <div className="preview-body">{activeArticle.body}</div>
           <hr style={{ margin: '2rem 0', border: 0, borderTop: '1px solid var(--border)' }} />
           <div style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>/{activeArticle.slug} · {activeArticle.author} · v{activeArticle.revision} · {new Date(activeArticle.updatedAt).toLocaleString()}</div>
@@ -478,7 +495,7 @@ export function EditorialApp(): React.ReactElement {
             <label>Title<input value={editor.title} onChange={event => setEditor({ ...editor, title: event.target.value })} placeholder="Article title" /></label>
             <label>Slug<input value={editor.slug} onChange={event => setEditor({ ...editor, slug: event.target.value })} placeholder="article-slug" /></label>
             <label>Excerpt<input value={editor.excerpt} onChange={event => setEditor({ ...editor, excerpt: event.target.value })} placeholder="Short summary" /></label>
-            <label>Cover media reference<input value={editor.coverMediaReference} onChange={event => setEditor({ ...editor, coverMediaReference: event.target.value })} placeholder="Media URL or reference" /></label>
+            <label>Cover media reference<input value={editor.coverMediaReference} onChange={event => setEditor({ ...editor, coverMediaReference: event.target.value })} placeholder="Choose an asset or paste an image URL" /><button type="button" onClick={() => window.open("/cms-root-orchestration/media", "_blank", "noopener,noreferrer")}>Open Media Library</button>{coverMediaPreview && <img src={coverMediaPreview} alt="Selected cover preview" style={{ maxWidth: "100%", maxHeight: "160px", objectFit: "cover", borderRadius: "8px" }} />}</label>
             <label>Tags<input value={editor.tags} onChange={event => setEditor({ ...editor, tags: event.target.value })} placeholder="cms, architecture" /></label>
             <label>Categories<input value={editor.categories} onChange={event => setEditor({ ...editor, categories: event.target.value })} placeholder="Engineering, Product" /></label>
           </div>

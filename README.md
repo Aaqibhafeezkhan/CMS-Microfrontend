@@ -510,3 +510,12 @@ This project is particularly useful for studying:
 ## License
 
 No explicit open-source license is currently defined for this repository. Unless a license is added, standard copyright restrictions apply to the repository contents.
+
+
+## Media library integration contract
+
+Vue Media and React Editorial share image binaries through same-origin IndexedDB database `cms-media-library`, object store `assets`, keyed by asset ID. Metadata remains in `cms_assets`; uploaded binaries are stored as Blobs and articles persist stable `media://<assetId>` references, never data URLs or temporary object URLs. Object URLs are created only for previews and revoked when no longer needed.
+
+Selecting **Use asset** writes the selection to `cms_media_selection` and dispatches `media:selected`. Its detail is `{ assetId, name, reference, type, size, width, height, altText, source }`; `reference` is the stable media reference. Editorial listens for same-window and cross-tab selection changes, applies the reference to the cover field, and resolves `media://` references from IndexedDB. External image URLs remain supported for manually entered or migrated references.
+
+The media module emits `media:uploaded`, `media:updated`, and `media:deleted` with stable `assetId` and `reference`. Upload success is emitted only after both binary and metadata persistence succeed.
