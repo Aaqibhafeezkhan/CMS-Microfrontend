@@ -15,7 +15,7 @@
     media: 'cms_assets',
     schema: 'cms_platform_schema'
   };
-  var VERSION = 1;
+  var VERSION = 2;
   var legacyNames = {
     'cms:auth:login': 'auth:login',
     'cms:auth:logout': 'auth:logout',
@@ -70,7 +70,7 @@
     if (!Object.keys(STORAGE_KEYS).some(function (name) { return STORAGE_KEYS[name] === key; })) return false;
     return safeWrite(key, value);
   }
-  function getSession() {
+  function initializeCollection(key, seed) {\n    var current = safeRead(key, null);\n    if (current === null) { safeWrite(key, seed); return seed; }\n    return Array.isArray(current) ? current : [];\n  }\n  function getSnapshot() {\n    return { session: getSession(), articles: initializeCollection(STORAGE_KEYS.articles, []), comments: initializeCollection(STORAGE_KEYS.comments, []), activity: initializeCollection(STORAGE_KEYS.activity, []), media: initializeCollection(STORAGE_KEYS.media, []) };\n  }\n  function getSession() {
     var session = read(STORAGE_KEYS.session, null);
     if (!isRecord(session) || !isRecord(session.user) || !session.user.id || !session.expiresAt || Number(session.expiresAt) <= Date.now()) return null;
     return session;
@@ -95,7 +95,7 @@
     subscribe: subscribe,
     read: read,
     write: write,
-    getSession: getSession
+    getSession: getSession,\n    initializeCollection: initializeCollection,\n    getSnapshot: getSnapshot
   });
   safeWrite(STORAGE_KEYS.schema, { version: VERSION, initializedAt: new Date().toISOString() });
 })(window);
