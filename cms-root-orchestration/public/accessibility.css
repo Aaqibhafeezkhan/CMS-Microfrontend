@@ -1,0 +1,30 @@
+:focus-visible{outline:3px solid #4f46e5;outline-offset:3px}
+button:disabled{cursor:not-allowed;opacity:.55}
+[hidden]{display:none!important}
+.cms-dashboard{max-width:1400px;margin:0 auto;color:var(--primary)}
+.cms-dashboard-header{display:flex;justify-content:space-between;align-items:flex-end;gap:1.5rem;margin:1rem 0 2rem}
+.cms-eyebrow{font-size:.7rem;font-weight:800;letter-spacing:.14em;color:var(--text-muted)}
+.cms-dashboard-title{font-size:clamp(1.8rem,4vw,2.8rem);letter-spacing:-.045em;margin:.35rem 0}
+.cms-dashboard-subtitle{color:var(--text-muted);max-width:650px}
+.cms-dashboard-actions{display:flex;gap:.6rem;flex-wrap:wrap}
+.cms-dashboard-action{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:10px;background:#4f46e5;color:white;text-decoration:none;font-weight:750}
+.cms-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.cms-metric-card,.cms-dashboard-panel{background:white;border:1px solid var(--border);border-radius:14px;padding:1.2rem;box-shadow:var(--shadow-sm)}
+.cms-metric-label,.cms-metric-detail{display:block;color:var(--text-muted);font-size:.8rem}
+.cms-metric-value{display:block;font-size:2rem;line-height:1.2;margin:.4rem 0}
+.cms-dashboard-lower{display:grid;grid-template-columns:1.2fr 1fr;gap:1rem;margin-top:1rem}
+.cms-dashboard-panel h3{font-size:1.05rem;margin-bottom:1rem}
+.cms-dashboard-empty{color:var(--text-muted);padding:1rem 0}
+.cms-activity-row,.cms-module-link{display:flex;justify-content:space-between;gap:1rem;padding:.85rem 0;border-top:1px solid var(--border)}
+.cms-activity-row{flex-direction:column}
+.cms-activity-row small,.cms-module-link span{color:var(--text-muted);font-size:.8rem}
+.cms-module-link{flex-direction:column;text-decoration:none;color:var(--primary)}
+.cms-module-link:hover strong{color:var(--primary-accent)}
+.cms-recovery-panel{margin:0 0 1rem;padding:1rem 1.2rem;border:1px solid #fecaca;border-radius:12px;background:#fff7f7;color:#991b1b}
+.cms-recovery-panel p{margin:.4rem 0 .8rem}
+.cms-recovery-actions{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.cms-recovery-actions button{padding:.55rem .8rem;border:0;border-radius:8px;background:#991b1b;color:white;font-weight:700}
+.cms-recovery-actions a{color:#991b1b;font-weight:700}
+@media(max-width:900px){.cms-dashboard-header{align-items:flex-start;flex-direction:column}.cms-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cms-dashboard-lower{grid-template-columns:1fr}}
+@media(max-width:520px){.cms-metric-grid{grid-template-columns:1fr}.cms-dashboard-actions{width:100%}.cms-dashboard-action{flex:1}.cms-dashboard{padding:.25rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

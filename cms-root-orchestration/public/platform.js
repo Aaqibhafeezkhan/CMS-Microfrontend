@@ -70,7 +70,15 @@
     if (!Object.keys(STORAGE_KEYS).some(function (name) { return STORAGE_KEYS[name] === key; })) return false;
     return safeWrite(key, value);
   }
-  function initializeCollection(key, seed) {\n    var current = safeRead(key, null);\n    if (current === null) { safeWrite(key, seed); return seed; }\n    return Array.isArray(current) ? current : [];\n  }\n  function getSnapshot() {\n    return { session: getSession(), articles: initializeCollection(STORAGE_KEYS.articles, []), comments: initializeCollection(STORAGE_KEYS.comments, []), activity: initializeCollection(STORAGE_KEYS.activity, []), media: initializeCollection(STORAGE_KEYS.media, []) };\n  }\n  function getSession() {
+  function initializeCollection(key, seed) {
+    var current = safeRead(key, null);
+    if (current === null) { safeWrite(key, seed); return seed; }
+    return Array.isArray(current) ? current : [];
+  }
+  function getSnapshot() {
+    return { session: getSession(), articles: initializeCollection(STORAGE_KEYS.articles, []), comments: initializeCollection(STORAGE_KEYS.comments, []), activity: initializeCollection(STORAGE_KEYS.activity, []), media: initializeCollection(STORAGE_KEYS.media, []) };
+  }
+  function getSession() {
     var session = read(STORAGE_KEYS.session, null);
     if (!isRecord(session) || !isRecord(session.user) || !session.user.id || !session.expiresAt || Number(session.expiresAt) <= Date.now()) return null;
     return session;
@@ -95,7 +103,9 @@
     subscribe: subscribe,
     read: read,
     write: write,
-    getSession: getSession,\n    initializeCollection: initializeCollection,\n    getSnapshot: getSnapshot
+    getSession: getSession,
+    initializeCollection: initializeCollection,
+    getSnapshot: getSnapshot
   });
   safeWrite(STORAGE_KEYS.schema, { version: VERSION, initializedAt: new Date().toISOString() });
 })(window);
