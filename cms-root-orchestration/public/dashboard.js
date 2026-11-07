@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var BASE='/cms-root-orchestration';
+  var BASE=window.location.pathname.startsWith('/cms-root-orchestration')?'/cms-root-orchestration':'';
   var KEYS={articles:'cms_articles',comments:'cms_collaboration_comments',activity:'cms_collaboration_activity',media:'cms_assets',session:'cms_session'};
   function parse(key){try{var value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[];}catch(_){return[];}}
   function currentSession(){try{return window.CMSPlatform?window.CMSPlatform.getSession():JSON.parse(localStorage.getItem(KEYS.session)||'null');}catch(_){return null;}}

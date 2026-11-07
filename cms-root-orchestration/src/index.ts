@@ -10,7 +10,8 @@ const applications = constructApplications({
   loadApp: ({ name }: { name: string }) => System.import(name) as Promise<LifeCycles>
 });
 const layoutEngine = constructLayoutEngine({ routes, applications, active: true });
-const protectedRoutes = ['/cms-root-orchestration/editorial', '/cms-root-orchestration/collab', '/cms-root-orchestration/media'];
+const appBasePath = window.location.pathname.startsWith('/cms-root-orchestration') ? '/cms-root-orchestration' : '';
+const protectedRoutes = ['/editorial', '/collab', '/media'].map(route => appBasePath + route);
 const failureState = new Map<string, string>();
 
 function getValidSession(): any | null {
@@ -34,7 +35,7 @@ function getValidSession(): any | null {
 function enforceAuthentication(): void {
   const path = window.location.pathname;
   const requiresAuthentication = protectedRoutes.some(route => path === route || path.startsWith(route + '/'));
-  if (requiresAuthentication && !getValidSession()) navigateToUrl('/cms-root-orchestration/auth');
+  if (requiresAuthentication && !getValidSession()) navigateToUrl(appBasePath + '/auth');
 }
 
 function showModuleFailure(event: any): void {
