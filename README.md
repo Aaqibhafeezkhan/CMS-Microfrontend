@@ -519,3 +519,36 @@ Vue Media and React Editorial share image binaries through same-origin IndexedDB
 Selecting **Use asset** writes the selection to `cms_media_selection` and dispatches `media:selected`. Its detail is `{ assetId, name, reference, type, size, width, height, altText, source }`; `reference` is the stable media reference. Editorial listens for same-window and cross-tab selection changes, applies the reference to the cover field, and resolves `media://` references from IndexedDB. External image URLs remain supported for manually entered or migrated references.
 
 The media module emits `media:uploaded`, `media:updated`, and `media:deleted` with stable `assetId` and `reference`. Upload success is emitted only after both binary and metadata persistence succeed.
+
+
+## Shared platform contracts
+
+The root shell loads `cms-root-orchestration/public/platform.js` before starting single-spa. It exposes `window.CMSPlatform`, a small framework-neutral browser API for publishing and subscribing to versioned events, reading/writing registered storage keys, and validating the active session. TypeScript consumers can reference `platform.d.ts`.
+
+The event contract includes authentication, article lifecycle, comments, and media events. Payloads use stable identifiers such as `articleId`, `commentId`, and `assetId`; producers should include the actor/source and avoid sharing framework-specific objects. The helper bridges the existing `cms:auth:*` authentication event names to the canonical `auth:*` names while older MFE bundles are migrated.
+
+## Persistence and data integrity
+
+CMS Ultra currently persists its demo workspace in browser storage. The main keys are `cms_session`, `cms_users`, `cms_articles`, `cms_collaboration_comments`, `cms_collaboration_activity`, and `cms_assets`. Media binary content is stored in IndexedDB; the local-storage media records contain metadata and references. See [the persistence contract](cms-root-orchestration/public/persistence.md) for ownership and expected shapes.
+
+The platform helper guards JSON parsing and storage writes and exposes a snapshot for the dashboard. It does not silently seed over an existing malformed collection. Browser storage can be unavailable or exceed quota, and clearing site data removes the local demo workspace. This is not backend persistence.
+
+## Dashboard, accessibility, and recovery
+
+The root landing route renders a workspace dashboard using current article, comment, activity, media, and session data. It refreshes when relevant CMS events or cross-tab storage changes occur. Quick links open the editorial, collaboration, and media modules.
+
+The shell includes keyboard-visible focus, responsive dashboard layouts, and reduced-motion support. single-spa load/mount failures are surfaced through a recoverable shell message, while storage failures and rejected storage operations receive an actionable explanation. Each MFE remains responsible for accessible labels, field-level validation, and destructive-action confirmation within its own workflows.
+
+## Testing and build
+
+Run the repository-level contract tests with Node.js:
+
+```bash
+npm test
+```
+
+Build each MFE independently from its directory using `npm ci` and `npm run build`. The unified Vercel deployment continues to use the root `vercel.json` and `scripts/build-vercel.js`, which builds all four MFEs and the root shell before preparing the combined output. The shell import map points to GitHub Pages URLs during standalone hosting; the deployment preparation script rewrites those entries to the colocated `/mfes/<module>/main.js` bundles for the unified Vercel deployment.
+
+## Demo security limitations
+
+Authentication and role checks run in the browser and are intended for portfolio evaluation only. Users can inspect or modify local storage, so client-side checks do not protect production data. A production deployment must move identity, session issuance, authorization, and sensitive data access behind a trusted server/API. Never enter real passwords, personal data, or confidential content into the demo.
