@@ -19,42 +19,37 @@ The repository is intentionally structured as a small microfrontend ecosystem ra
 
 ## Architecture
 
+The root shell composes four peer business microfrontends. It owns routing, navigation, the shared design system, session-aware route gating, and runtime recovery; it does not own the business logic of the four modules.
+
 ```text
-                           CMS Microfrontend Platform
-                                      │
-                                      ▼
-                         ┌─────────────────────────┐
-                         │   Root Orchestration    │
-                         │     single-spa shell    │
-                         │  SystemJS + import map  │
-                         └────────────┬────────────┘
-                                      │
-                ┌─────────────────────┼─────────────────────┐
-                │                     │                     │
-                ▼                     ▼                     ▼
-        ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-        │ Angular Auth  │     │React Editorial │     │Svelte Collab  │
-        │   Angular 11  │     │    React 17   │     │    Svelte 3   │
-        └───────────────┘     └───────────────┘     └───────────────┘
-                │                     │                     │
-                └─────────────────────┼─────────────────────┘
-                                      │
-                                      ▼
-                              ┌───────────────┐
-                              │  Vue Media    │
-                              │   Vue 2.6     │
-                              └───────────────┘
+                           CMS Ultra
+                    Root orchestration shell
+                    single-spa · SystemJS
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+          ▼                   ▼                   ▼
+    Angular Auth        React Editorial    Svelte Collaboration
+      Angular 11          React 17              Svelte 3
+          │                   │                   │
+          └───────────────────┼───────────────────┘
+                              │
+                              ▼
+                         Vue Media
+                          Vue 2.6
+
+All four business microfrontends are peers mounted by the root shell.
 ```
 
 ### Microfrontend responsibilities
 
 | Application | Framework | Responsibility | Route |
 |---|---|---|---|
-| `cms-root-orchestration` | TypeScript + single-spa | Application shell, routing and composition | `/` |
-| `cms-angular-auth` | Angular 11 | Authentication and role-based access control | `/auth` |
-| `cms-react-editorial` | React 17 + TypeScript | Article creation, editing and publishing workflow | `/editorial` |
-| `cms-svelte-collab` | Svelte 3 + TypeScript | Team collaboration, chat and activity | `/collab` |
-| `cms-vue-media` | Vue 2.6 + TypeScript | Media and digital asset management | `/media` |
+| `cms-root-orchestration` | TypeScript + single-spa | Shell, dashboard, routes, contracts and lifecycle recovery | `/` |
+| `cms-angular-auth` | Angular 11 | Demo sign-in, session state, users and role management | `/auth` |
+| `cms-react-editorial` | React 17 + TypeScript | Article authoring, lifecycle, preview and revisions | `/editorial` |
+| `cms-svelte-collab` | Svelte 3 + TypeScript | Article discussions, comments, mentions and activity | `/collab` |
+| `cms-vue-media` | Vue 2.6 + TypeScript | Image upload, local asset metadata, previews and selection | `/media` |
 
 ## Repository structure
 
@@ -114,93 +109,47 @@ CMS-Microfrontend/
 
 ### 1. Root orchestration shell
 
-`cms-root-orchestration` is the host application. It provides the CMS navigation experience and delegates module lifecycle management to single-spa.
+`cms-root-orchestration` is the host application. It registers the four business microfrontends with single-spa, defines their routes, resolves their SystemJS import-map entries, renders the dashboard and shared navigation, and surfaces recoverable module failures.
 
-Responsibilities include:
+The shell validates the browser-persisted session before allowing access to protected modules. This route gate is a demo convenience, not a security boundary; each MFE also checks permissions before performing its own local operations.
 
-- Registering microfrontends with single-spa
-- Defining application routes through `single-spa-layout`
-- Loading remote modules through `System.import`
-- Managing the import map used for runtime composition
-- Providing the shared shell and design system
-- Monitoring authentication state
-- Protecting `/auth`, `/editorial`, `/collab`, and `/media` routes
-- Handling responsive sidebar and navigation state
-
-The shell currently validates the `cms_session` entry in `localStorage` before allowing access to protected modules.
+The landing route reads article, collaboration, activity, media and session data from the shared browser contracts. The shell remains framework-neutral and does not import another MFE's component implementation.
 
 ### 2. Authentication & authorization
 
-`cms-angular-auth` owns the authentication experience and the authorization contract used by the platform.
+`cms-angular-auth` provides deliberately fake demo sign-in and role management. The three roles are:
 
-The current authorization model defines three roles:
+- **Administrator** — all demo permissions, including user and role management.
+- **Editor** — content review/publishing, media management and collaboration moderation.
+- **Contributor** — article creation/editing and collaboration participation.
 
-- **Administrator** — full CMS permissions
-- **Editor** — content, media and collaboration management
-- **Contributor** — content creation/editing and collaboration
+The session is stored in `cms_session` with a nested user record, issue time and expiry time. Demo sessions expire after 30 minutes. The `cms_users` collection stores user profile/role records without passwords. Select one of the in-app demo account shortcuts to populate the fake credentials.
 
-The authorization contract includes permissions such as:
-
-```text
-content.create
-content.edit
-content.review
-content.publish
-content.delete
-media.manage
-collaboration.manage
-users.manage
-```
-
-Authentication state is represented as a CMS session containing the user, issue time and expiration time. Authentication events are exposed as browser custom events so independently mounted applications can react without being tightly coupled to the Angular implementation.
-
-> This is a client-side demonstration architecture. It is not intended to provide production-grade server-side authentication or authorization by itself.
+This is client-side demonstration authentication. It is not an identity provider and does not protect real data.
 
 ### 3. Editorial suite
 
-`cms-react-editorial` provides the content management workflow.
+`cms-react-editorial` owns the article model and its lifecycle:
 
-Capabilities include:
+- Draft, Review, Published and Archived states with guarded transitions.
+- Title, unique slug, excerpt, body, cover reference, author, timestamps, tags, categories and revision history.
+- Create, edit, search, filter, sort, preview, duplicate, archive/restore and delete workflows.
+- Role checks at operation boundaries and persistence-before-success event publication.
+- Stable `media://<assetId>` cover references resolved from the shared media IndexedDB store.
 
-- Article listing
-- Published / Review / Draft status tracking
-- Article creation
-- Article editing
-- Article deletion
-- Title and body editing
-- Publishing-state selection
-- Local persistence through `localStorage`
-
-The React application exposes the standard single-spa lifecycle functions and is consumed by the root shell as a SystemJS module.
+Article records are persisted in `cms_articles` in the current browser.
 
 ### 4. Collaboration
 
-`cms-svelte-collab` provides the collaboration workspace.
+`cms-svelte-collab` associates discussions with actual article IDs. It supports article selection, comments, editing/deletion by permitted actors, mention recognition, resolving/reopening discussion threads, and a filterable activity stream.
 
-The module is designed around:
-
-- Team chat
-- Message threading
-- User presence
-- Activity tracking
-- Collaboration-oriented CMS workflows
-
-The Svelte entry point exposes `bootstrap`, `mount`, and `unmount` lifecycle functions so the application can participate in the shell's microfrontend lifecycle.
+Comments and activity are browser-persisted in `cms_collaboration_comments` and `cms_collaboration_activity`. Same-tab events update the mounted workspace; browser storage events refresh other tabs. This is not server-backed real-time collaboration or shared multi-user presence.
 
 ### 5. Media library
 
-`cms-vue-media` provides digital asset management capabilities.
+`cms-vue-media` manages image assets in the browser. It supports image upload (5 MB per-file limit), grid/list views, search, sorting, previews, alt text and tags, asset selection and deletion.
 
-The module includes:
-
-- Media grid
-- Image, video and document filtering
-- Asset statistics
-- Quick actions
-- Upload-oriented interface
-- Vue Router integration
-
-It is mounted into the platform through `single-spa-vue`.
+Asset metadata is stored in `cms_assets`; uploaded binary Blobs are stored in IndexedDB database `cms-media-library`, object store `assets`. Editorial records keep stable `media://<assetId>` references. Object URLs are temporary preview handles only and are not persisted. These assets are local to the browser profile and are not publicly hosted or synchronized to other devices.
 
 ## Runtime composition
 
@@ -383,45 +332,25 @@ The project therefore serves as a practical demonstration of:
 
 ## Data and persistence model
 
-This repository is a frontend architecture demonstration and currently uses browser storage rather than a backend database.
+CMS Ultra is a browser-persisted demonstration with no application database or server API. Its principal localStorage keys are:
 
-Examples include:
+- `cms_session` — current demo session.
+- `cms_users` — demo user profiles and role assignments.
+- `cms_articles` — editorial records and revision metadata.
+- `cms_collaboration_comments` — article-linked comments.
+- `cms_collaboration_activity` — collaboration activity feed.
+- `cms_assets` — media metadata.
+- `cms_media_selection` — one-shot media handoff to Editorial.
+- `cms_platform_schema` — shared browser-contract version metadata.
+- `cms_sidebar_collapsed` — shell UI preference.
 
-- `cms_session` — authenticated session state
-- `cms_articles` — editorial content state
-- `cms_sidebar_collapsed` — shell UI preference
-
-Because this state is local to the browser, data is not automatically shared between users or devices and should not be treated as durable production CMS data.
+Uploaded media Blobs are stored separately in IndexedDB (`cms-media-library` / `assets`). Cross-tab changes use the browser `storage` event; same-tab coordination uses CustomEvents. This data does not automatically travel across devices or browser profiles, and clearing site data removes the demo workspace.
 
 ## Authentication flow
 
-The current client-side flow is approximately:
+The Angular module validates the in-app fake account, writes a 30-minute `cms_session`, and dispatches the legacy `cms:auth:*` event. The root platform helper bridges those events to canonical `auth:login` / `auth:logout` events. The shell and mounted business modules refresh their session-derived UI and permissions from those events and cross-tab storage changes.
 
-```text
-User
-  │
-  ▼
-Angular Auth MFE
-  │
-  ├── Validate credentials/form
-  │
-  ├── Create cms_session
-  │
-  └── Publish authentication event
-  │
-  ▼
-Root Shell
-  │
-  ├── Validate session
-  ├── Check expiry
-  └── Allow protected route
-       │
-       ├── Editorial
-       ├── Collaboration
-       └── Media
-```
-
-When the session is invalid or expired, the shell removes the invalid session and redirects protected routes back to authentication.
+The shell redirects protected routes to `/auth` when the session is absent, expired or invalid. The browser-side checks are for demonstration workflow only and can be bypassed by a user who controls the browser.
 
 ## Security considerations
 
@@ -445,11 +374,11 @@ A role check in a browser must never be considered sufficient authorization for 
 
 ## Microfrontend communication
 
-The current platform favors lightweight browser-level contracts instead of direct imports between business microfrontends.
+Business modules communicate through browser-level events and documented storage references rather than importing one another's framework internals. The root loads `cms-root-orchestration/public/platform.js` before single-spa starts. It exposes `window.CMSPlatform` for versioned event publication/subscription, event validation, allowlisted storage access and session validation.
 
-Authentication events are exposed using `CustomEvent`, allowing the shell and other modules to respond to state changes without creating a direct Angular-to-React, Angular-to-Vue, or Angular-to-Svelte dependency.
+The contract covers authentication, article lifecycle, comments and media events. Article, comment and media payloads require stable `articleId`, `commentId` or `assetId` identifiers. The shell also observes the legacy native CustomEvents emitted by the current MFE bundles, annotates them with the contract version and validation status, and bridges legacy `cms:auth:*` names. A `contractValid: false` payload is a contract violation that should be fixed at its producer; the compatibility observer does not make invalid business data safe.
 
-This keeps the architecture aligned with the microfrontend principle that modules should communicate through explicit, stable contracts rather than reaching into one another's implementation details.
+See [`platform.d.ts`](cms-root-orchestration/public/platform.d.ts), [`platform.js`](cms-root-orchestration/public/platform.js), and [the browser persistence contract](cms-root-orchestration/public/persistence.md).
 
 ## Design principles
 
@@ -541,13 +470,28 @@ The shell includes keyboard-visible focus, responsive dashboard layouts, and red
 
 ## Testing and build
 
-Run the repository-level contract tests with Node.js:
+The repository-level Node.js tests use the built-in test runner (Node 22):
 
 ```bash
 npm test
 ```
 
-Build each MFE independently from its directory using `npm ci` and `npm run build`. The unified Vercel deployment continues to use the root `vercel.json` and `scripts/build-vercel.js`, which builds all four MFEs and the root shell before preparing the combined output. The shell import map points to GitHub Pages URLs during standalone hosting; the deployment preparation script rewrites those entries to the colocated `/mfes/<module>/main.js` bundles for the unified Vercel deployment.
+The suite covers the shared event/storage/session contract and the framework-independent editorial lifecycle/role policy. These tests do not replace full component, multi-tab browser, accessibility or end-to-end integration tests.
+
+Build an individual MFE from its directory with its locked dependencies installed:
+
+```bash
+npm ci --legacy-peer-deps
+npm run build
+```
+
+The root shell also builds with `npm run build`. The complete unified Vercel preparation is:
+
+```bash
+node scripts/build-vercel.js
+```
+
+That script performs clean installs for all four MFEs and the shell, builds each application, then prepares the shared output under `cms-root-orchestration/dist`. The root package documents Node.js `22.x`. It is a manual build/deployment workflow; this repository does not require GitHub Actions.
 
 ## Demo security limitations
 

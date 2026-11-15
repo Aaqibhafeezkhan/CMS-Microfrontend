@@ -1,31 +1,24 @@
-# cms-react-editorial
+# CMS Ultra — React Editorial
 
-React 17 + TypeScript microfrontend for the CMS Ultra platform. Handles editorial content creation, management, and publishing.
+React 17 + TypeScript microfrontend responsible for article authoring and the editorial lifecycle.
 
-## Features
+## Capabilities
 
-- 📋 Article list with status tracking (Published / Review / Draft)
-- ✏️ Full article editor with title, body and status controls
-- 📊 Stats dashboard (total articles, published, drafts)
+- Article creation, editing, preview, search, filtering and sorting.
+- Draft, Review, Published and Archived states with validated transitions.
+- Unique slug validation, excerpts, tags, categories and cover-media references.
+- Revision metadata, duplication, archive/restore and confirmed deletion.
+- Role-aware operations and persistence-before-event behavior.
+- Cross-tab article-list refresh and media selection handoff from Vue Media.
 
-## Live Demo
+Articles are stored in browser localStorage under `cms_articles`. Cover images use stable `media://<assetId>` references for uploaded local assets; external image URLs remain supported for existing/demo content.
 
-🌐 **Standalone:** https://AaqibhafeezKhan.github.io/cms-react-editorial  
-🌐 **In Shell:** https://AaqibhafeezKhan.github.io/cms-root-orchestration/editorial
-
-## Local Development
-
-```bash
-npm install
-npm start   # → http://localhost:8081
-```
-
-## Build
+## Local development and build
 
 ```bash
-npm run build   # outputs dist/main.js as SystemJS module
+npm ci --legacy-peer-deps
+npm start
+npm run build
 ```
 
-## Single-SPA Integration
-
-Exports `{ bootstrap, mount, unmount }` as a SystemJS module consumed by the root shell.
+The development server uses port `8081`. The production output is `dist/main.js`, a SystemJS-compatible module exposing the single-spa lifecycle exports.
