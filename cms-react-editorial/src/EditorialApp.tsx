@@ -77,14 +77,17 @@ function parseList(value: string): string[] {
 
 function getSession(): { name: string; role: string } {
   try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
-    const user = session.user || {};
-    return {
-      name: user.name || user.email || session.name || 'Current User',
-      role: user.role || session.role || 'Contributor'
-    };
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    const user = session && session.user;
+    const expiresAt = Number(session && session.expiresAt);
+    const allowedRoles = ['Administrator', 'Editor', 'Contributor'];
+    if (!user || typeof user.id !== 'string' || !user.id.trim() ||
+        allowedRoles.indexOf(user.role) < 0 || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return { name: 'Current User', role: 'Guest' };
+    }
+    return { name: user.name || user.email || 'Current User', role: user.role };
   } catch {
-    return { name: 'Current User', role: 'Contributor' };
+    return { name: 'Current User', role: 'Guest' };
   }
 }
 
@@ -161,7 +164,7 @@ function emitArticleEvent(type: string, article: Article, previousStatus?: Statu
 function can(role: string, permission: 'create' | 'edit' | 'review' | 'publish' | 'delete' | 'archive'): boolean {
   if (role === 'Administrator') return true;
   if (role === 'Editor') return true;
-  return permission === 'create' || permission === 'edit';
+  return role === 'Contributor' && (permission === 'create' || permission === 'edit');
 }
 
 export function EditorialApp(): React.ReactElement {
@@ -185,8 +188,11 @@ export function EditorialApp(): React.ReactElement {
   const [pendingMediaSelection,setPendingMediaSelection]=useState<any>(null);
 
   useEffect(() => {
-    const session = getSession();
-    setRole(session.role);
+    const syncRole = () => setRole(getSession().role);
+    syncRole();
+    window.addEventListener('storage', syncRole);
+    window.addEventListener('auth:login', syncRole);
+    window.addEventListener('auth:logout', syncRole);
     try {
       setArticles(readArticles());
     } catch {
@@ -194,6 +200,11 @@ export function EditorialApp(): React.ReactElement {
     } finally {
       setLoading(false);
     }
+    return () => {
+      window.removeEventListener('storage', syncRole);
+      window.removeEventListener('auth:login', syncRole);
+      window.removeEventListener('auth:logout', syncRole);
+    };
   }, []);
 
   useEffect(() => {

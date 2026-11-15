@@ -104,26 +104,64 @@ function readAssets(): Asset[] {
 function emitMediaEvent(name: string, asset: Asset): void { window.dispatchEvent(new CustomEvent(name, { detail: { assetId: asset.id, name: asset.name, url: asset.url, reference: asset.url, type: asset.type, size: asset.bytes, width: asset.width, height: asset.height, uploader: asset.uploader, uploadedAt: asset.uploadedAt, tags: asset.tags, altText: asset.altText, source: 'cms-vue-media' } })); }
 export default Vue.extend({
   name: 'MediaApp',
-  data() { return { assets: [] as Asset[], previewUrls: {} as Record<string, string>, loading: true, error: '', notice: '', search: '', typeFilter: 'all', sortBy: 'newest', viewMode: 'grid', selectedAsset: null as Asset | null, confirmDelete: null as Asset | null, draftAltText: '', draftTags: '' }; },
+  data() { return { assets: [] as Asset[], previewUrls: {} as Record<string, string>, loading: true, error: '', notice: '', search: '', typeFilter: 'all', sortBy: 'newest', viewMode: 'grid', selectedAsset: null as Asset | null, confirmDelete: null as Asset | null, draftAltText: '', draftTags: '', sessionRole: 'Guest' }; },
   computed: {
     filteredAssets(): Asset[] { const query = this.search.toLowerCase(); return this.assets.filter((asset: Asset) => { const haystack = [asset.name, asset.altText, asset.uploader, ...asset.tags].join(' ').toLowerCase(); return (!query || haystack.includes(query)) && (this.typeFilter === 'all' || asset.type.startsWith(`${this.typeFilter}/`)); }).sort((a: Asset, b: Asset) => { if (this.sortBy === 'name') return a.name.localeCompare(b.name); if (this.sortBy === 'size') return b.bytes - a.bytes; const comparison = new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime(); return this.sortBy === 'oldest' ? -comparison : comparison; }); },
     imageCount(): number { return this.assets.filter((asset: Asset) => asset.type.startsWith('image/')).length; },
     taggedCount(): number { return this.assets.filter((asset: Asset) => asset.tags.length > 0).length; },
     totalBytes(): number { return this.assets.reduce((total: number, asset: Asset) => total + asset.bytes, 0); },
     hasFilters(): boolean { return Boolean(this.search || this.typeFilter !== 'all' || this.sortBy !== 'newest'); },
-    canManageMedia(): boolean {
+    canManageMedia(): boolean { return this.sessionRole === 'Administrator' || this.sessionRole === 'Editor'; }
+  },
+  mounted() {
+    const vm = this as any;
+    vm.syncSessionRole();
+    window.addEventListener('storage', vm.handleSessionStorage);
+    window.addEventListener('auth:login', vm.syncSessionRole);
+    window.addEventListener('auth:logout', vm.syncSessionRole);
+    void (async () => {
+      try {
+        vm.assets = readAssets();
+        for (const asset of vm.assets) {
+          const id = mediaAssetId(asset.url);
+          if (id) {
+            const blob = await readMediaBlob(id);
+            if (blob) vm.$set(vm.previewUrls, asset.id, URL.createObjectURL(blob));
+            else vm.error = 'The original file for ' + asset.name + ' is missing from browser media storage.';
+          }
+        }
+      } catch {
+        vm.assets = [];
+        vm.error = 'The stored media library could not be read. Existing browser data was not overwritten.';
+      } finally {
+        vm.loading = false;
+      }
+    })();
+  },
+  beforeDestroy() {
+    window.removeEventListener('storage', (this as any).handleSessionStorage);
+    window.removeEventListener('auth:login', (this as any).syncSessionRole);
+    window.removeEventListener('auth:logout', (this as any).syncSessionRole);
+    Object.values(this.previewUrls).forEach(url => URL.revokeObjectURL(url));
+  },
+  methods: {
+    syncSessionRole(): void {
       try {
         const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-        const role = session && session.user && session.user.role;
-        return role === 'Administrator' || role === 'Editor';
+        const user = session && session.user;
+        const expiresAt = Number(session && session.expiresAt);
+        const allowedRoles = ['Administrator', 'Editor', 'Contributor'];
+        this.sessionRole = user && typeof user.id === 'string' && user.id.trim() &&
+          allowedRoles.indexOf(user.role) >= 0 && Number.isFinite(expiresAt) && expiresAt > Date.now()
+          ? user.role
+          : 'Guest';
       } catch {
-        return false;
+        this.sessionRole = 'Guest';
       }
-    }
-  },
-  mounted() { const vm = this as any; void (async () => { try { vm.assets = readAssets(); for (const asset of vm.assets) { const id = mediaAssetId(asset.url); if (id) { const blob = await readMediaBlob(id); if (blob) vm.$set(vm.previewUrls, asset.id, URL.createObjectURL(blob)); else vm.error = 'The original file for ' + asset.name + ' is missing from browser media storage.'; } } } catch { vm.assets = []; vm.error = 'The stored media library could not be read. Existing browser data was not overwritten.'; } finally { vm.loading = false; } })(); },
-  beforeDestroy() { Object.values(this.previewUrls).forEach(url => URL.revokeObjectURL(url)); },
-  methods: {
+    },
+    handleSessionStorage(event: StorageEvent): void {
+      if (event.key === SESSION_KEY || event.key === null) this.syncSessionRole();
+    },
     saveAssets(): boolean { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.assets)); this.error = ''; return true; } catch { this.error = 'The media library could not be saved. Browser storage may be unavailable or full.'; return false; } },
     openFilePicker(): void { (this.$refs.fileInput as HTMLInputElement).click(); }, toggleView(): void { this.viewMode = this.viewMode === 'grid' ? 'list' : 'grid'; }, clearFilters(): void { this.search = ''; this.typeFilter = 'all'; this.sortBy = 'newest'; },
     formatBytes(bytes: number): string { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`; },
