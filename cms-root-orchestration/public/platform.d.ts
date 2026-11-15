@@ -8,6 +8,8 @@ export interface CmsEventDetail {
   version?: number;
   occurredAt?: string;
   source?: string;
+  contractValid?: boolean;
+  contractError?: string;
   user?: { id: string; name?: string; email?: string; role?: string };
   articleId?: string;
   commentId?: string;
