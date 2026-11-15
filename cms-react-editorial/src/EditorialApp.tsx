@@ -370,9 +370,9 @@ export function EditorialApp(): React.ReactElement {
       (current === 'Review' && (target === 'Draft' || target === 'Published')) ||
       (current === 'Published' && (target === 'Draft' || target === 'Archived')) ||
       (current === 'Archived' && target === 'Draft');
-    if (!valid) { setError(`Cannot move ${current} to ${target}.`); return; }
+    if (!valid) { setError(`Cannot move ${current} to ${target}.`); return false; }
     const permission = target === 'Review' ? 'review' : target === 'Published' ? 'publish' : target === 'Archived' ? 'archive' : 'edit';
-    if (!can(role, permission)) { setError('Your role does not have permission for this workflow action.'); return; }
+    if (!can(role, permission)) { setError('Your role does not have permission for this workflow action.'); return false; }
     const now = new Date().toISOString();
     const updated = { ...article, status: target, updatedAt: now, revision: article.revision + 1, revisions: [...article.revisions, { version: article.revision + 1, updatedAt: now, editor: getSession().name, summary: `Status changed from ${current} to ${target}` }] };
     if (!persist(articles.map(item => item.id === updated.id ? updated : item))) return false;
