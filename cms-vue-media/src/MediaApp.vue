@@ -1,13 +1,13 @@
 <template>
   <div class="media-app">
-    <header class="page-header"><div><p class="eyebrow">Digital asset management</p><h2>Media Library</h2><p class="subtitle">Upload, organize, preview and reuse assets across the CMS.</p></div><div class="header-actions"><button class="secondary" type="button" @click="toggleView">{{ viewMode === 'grid' ? '☷ List view' : '▦ Grid view' }}</button><button class="primary" type="button" @click="openFilePicker">↑ Upload asset</button><input ref="fileInput" class="hidden-input" type="file" accept="image/*" multiple @change="handleUpload"></div></header>
+    <header class="page-header"><div><p class="eyebrow">Digital asset management</p><h2>Media Library</h2><p class="subtitle">Upload, organize, preview and reuse assets across the CMS.</p></div><div class="header-actions"><button class="secondary" type="button" @click="toggleView">{{ viewMode === 'grid' ? '☷ List view' : '▦ Grid view' }}</button><button class="primary" type="button" :disabled="!canManageMedia" :title="canManageMedia ? '' : 'Only Editors and Administrators can upload media'" @click="openFilePicker">↑ Upload asset</button><input ref="fileInput" class="hidden-input" type="file" accept="image/*" multiple @change="handleUpload"></div></header>
     <div v-if="notice" class="notice success" role="status">{{ notice }}</div><div v-if="error" class="notice error" role="alert">{{ error }}</div>
     <section class="stats"><div class="stat-card"><span>Total assets</span><strong>{{ assets.length }}</strong></div><div class="stat-card"><span>Images</span><strong>{{ imageCount }}</strong></div><div class="stat-card"><span>Tagged assets</span><strong>{{ taggedCount }}</strong></div><div class="stat-card"><span>Storage used</span><strong>{{ formatBytes(totalBytes) }}</strong></div></section>
     <section class="toolbar"><label class="search-field"><span class="sr-only">Search assets</span><input v-model.trim="search" type="search" placeholder="Search filename, alt text or tags"></label><label><span class="sr-only">Filter by type</span><select v-model="typeFilter"><option value="all">All types</option><option value="image">Images</option></select></label><label><span class="sr-only">Sort assets</span><select v-model="sortBy"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Name A–Z</option><option value="size">Largest first</option></select></label><button v-if="hasFilters" class="text-button" type="button" @click="clearFilters">Clear filters</button></section>
     <div v-if="loading" class="state-card"><div class="spinner"></div><p>Loading media library…</p></div>
     <section v-else-if="filteredAssets.length" :class="['asset-container', viewMode]"><article v-for="asset in filteredAssets" :key="asset.id" class="asset-card"><button class="asset-preview" type="button" :aria-label="`Preview ${asset.name}`" @click="openDetails(asset)"><img :src="previewUrls[asset.id] || asset.url" :alt="asset.altText || asset.name" @error="markPreviewError(asset.id)"><span v-if="asset.previewError" class="preview-fallback">Preview unavailable</span></button><div class="asset-info"><button class="asset-name" type="button" @click="openDetails(asset)">{{ asset.name }}</button><p>{{ formatBytes(asset.bytes) }} · {{ asset.width && asset.height ? `${asset.width} × ${asset.height}` : 'Image' }}</p><div class="tags" v-if="asset.tags.length"><span v-for="tag in asset.tags.slice(0, 3)" :key="tag">#{{ tag }}</span><span v-if="asset.tags.length > 3">+{{ asset.tags.length - 3 }}</span></div><div class="card-actions"><button type="button" @click="openDetails(asset)">Details</button><button type="button" @click="selectAsset(asset)">Use asset</button></div></div></article></section>
-    <section v-else class="empty-state"><div class="empty-icon">▧</div><h3>{{ assets.length ? 'No matching assets' : 'Your media library is empty' }}</h3><p>{{ assets.length ? 'Try a different search or filter.' : 'Upload an image to start building the library.' }}</p><button v-if="assets.length" class="secondary" type="button" @click="clearFilters">Clear filters</button><button v-else class="primary" type="button" @click="openFilePicker">Upload your first asset</button></section>
-    <div v-if="selectedAsset" class="modal-backdrop" role="presentation" @click.self="closeDetails"><aside class="details-panel" role="dialog" aria-modal="true" aria-labelledby="asset-details-title"><div class="panel-header"><div><p class="eyebrow">Asset details</p><h3 id="asset-details-title">{{ selectedAsset.name }}</h3></div><button class="icon-button" type="button" aria-label="Close details" @click="closeDetails">×</button></div><div class="large-preview"><img :src="previewUrls[selectedAsset.id] || selectedAsset.url" :alt="selectedAsset.altText || selectedAsset.name"></div><div class="metadata-grid"><div><span>Type</span><strong>{{ selectedAsset.type }}</strong></div><div><span>Size</span><strong>{{ formatBytes(selectedAsset.bytes) }}</strong></div><div><span>Dimensions</span><strong>{{ selectedAsset.width && selectedAsset.height ? `${selectedAsset.width} × ${selectedAsset.height}` : 'Unavailable' }}</strong></div><div><span>Uploaded</span><strong>{{ formatDate(selectedAsset.uploadedAt) }}</strong></div><div><span>Uploader</span><strong>{{ selectedAsset.uploader }}</strong></div></div><form class="metadata-form" @submit.prevent="saveMetadata"><label>Alt text<input v-model.trim="draftAltText" maxlength="180" placeholder="Describe the image"></label><label>Tags<input v-model="draftTags" maxlength="300" placeholder="e.g. product, homepage, team"></label><label>Reference<input :value="selectedAsset.url" readonly @focus="selectInput"></label><div class="panel-actions"><button class="secondary" type="button" @click="copyReference">Copy reference</button><button class="secondary" type="button" @click="selectAsset(selectedAsset)">Use asset</button><button class="primary" type="submit">Save metadata</button></div><button class="danger" type="button" @click="requestDelete(selectedAsset)">Delete asset</button></form></aside></div>
+    <section v-else class="empty-state"><div class="empty-icon">▧</div><h3>{{ assets.length ? 'No matching assets' : 'Your media library is empty' }}</h3><p>{{ assets.length ? 'Try a different search or filter.' : 'Upload an image to start building the library.' }}</p><button v-if="assets.length" class="secondary" type="button" @click="clearFilters">Clear filters</button><button v-else class="primary" type="button" :disabled="!canManageMedia" @click="openFilePicker">Upload your first asset</button></section>
+    <div v-if="selectedAsset" class="modal-backdrop" role="presentation" @click.self="closeDetails"><aside class="details-panel" role="dialog" aria-modal="true" aria-labelledby="asset-details-title"><div class="panel-header"><div><p class="eyebrow">Asset details</p><h3 id="asset-details-title">{{ selectedAsset.name }}</h3></div><button class="icon-button" type="button" aria-label="Close details" @click="closeDetails">×</button></div><div class="large-preview"><img :src="previewUrls[selectedAsset.id] || selectedAsset.url" :alt="selectedAsset.altText || selectedAsset.name"></div><div class="metadata-grid"><div><span>Type</span><strong>{{ selectedAsset.type }}</strong></div><div><span>Size</span><strong>{{ formatBytes(selectedAsset.bytes) }}</strong></div><div><span>Dimensions</span><strong>{{ selectedAsset.width && selectedAsset.height ? `${selectedAsset.width} × ${selectedAsset.height}` : 'Unavailable' }}</strong></div><div><span>Uploaded</span><strong>{{ formatDate(selectedAsset.uploadedAt) }}</strong></div><div><span>Uploader</span><strong>{{ selectedAsset.uploader }}</strong></div></div><form class="metadata-form" @submit.prevent="saveMetadata"><label>Alt text<input v-model.trim="draftAltText" maxlength="180" placeholder="Describe the image"></label><label>Tags<input v-model="draftTags" maxlength="300" placeholder="e.g. product, homepage, team"></label><label>Reference<input :value="selectedAsset.url" readonly @focus="selectInput"></label><div class="panel-actions"><button class="secondary" type="button" @click="copyReference">Copy reference</button><button class="secondary" type="button" @click="selectAsset(selectedAsset)">Use asset</button><button class="primary" type="submit" :disabled="!canManageMedia">Save metadata</button></div><button class="danger" type="button" :disabled="!canManageMedia" @click="requestDelete(selectedAsset)">Delete asset</button></form></aside></div>
     <div v-if="confirmDelete" class="modal-backdrop"><div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title"><p class="eyebrow">Destructive action</p><h3 id="delete-title">Delete {{ confirmDelete.name }}?</h3><p>This removes the asset from this browser's media library. Articles that already reference its URL will not be modified.</p><div class="panel-actions"><button class="secondary" type="button" @click="confirmDelete = null">Cancel</button><button class="danger solid" type="button" @click="deleteAsset">Delete asset</button></div></div></div>
   </div>
 </template>
@@ -16,10 +16,69 @@ import Vue from "vue";
 interface Asset { id: string; name: string; url: string; type: string; bytes: number; width: number | null; height: number | null; uploadedAt: string; uploader: string; altText: string; tags: string[]; previewError?: boolean; }
 const STORAGE_KEY = 'cms_assets'; const SESSION_KEY = 'cms_session'; const MAX_FILE_BYTES = 5 * 1024 * 1024; const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
 const MEDIA_DB='cms-media-library'; const MEDIA_STORE='assets';
-function openMediaDatabase():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{const request=indexedDB.open(MEDIA_DB,1);request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains(MEDIA_STORE))request.result.createObjectStore(MEDIA_STORE,{keyPath:'id'});};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error||new Error('Media storage could not be opened.'));});}
-async function storeMediaBlob(id:string,blob:Blob):Promise<void>{const db=await openMediaDatabase();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(MEDIA_STORE,'readwrite');tx.objectStore(MEDIA_STORE).put({id,blob});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('Media could not be saved.'));tx.onabort=()=>reject(tx.error||new Error('Media save was cancelled.'));});db.close();}
-async function readMediaBlob(id:string):Promise<Blob|null>{const db=await openMediaDatabase();const blob=await new Promise<Blob|null>((resolve,reject)=>{const req=db.transaction(MEDIA_STORE,'readonly').objectStore(MEDIA_STORE).get(id);req.onsuccess=()=>resolve(req.result?.blob||null);req.onerror=()=>reject(req.error||new Error('Media could not be read.'));});db.close();return blob;}
-async function removeMediaBlob(id:string):Promise<void>{const db=await openMediaDatabase();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(MEDIA_STORE,'readwrite');tx.objectStore(MEDIA_STORE).delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('Media could not be removed.'));});db.close();}
+function openMediaDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is unavailable in this browser.'));
+      return;
+    }
+    const request = indexedDB.open(MEDIA_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(MEDIA_STORE)) {
+        request.result.createObjectStore(MEDIA_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => {
+      const database = request.result;
+      database.onversionchange = () => database.close();
+      resolve(database);
+    };
+    request.onerror = () => reject(request.error || new Error('Media storage could not be opened.'));
+    request.onblocked = () => reject(new Error('Media storage is blocked by another open tab. Close other CMS tabs and retry.'));
+  });
+}
+async function storeMediaBlob(id: string, blob: Blob): Promise<void> {
+  const db = await openMediaDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE, 'readwrite');
+      tx.objectStore(MEDIA_STORE).put({ id, blob });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Media could not be saved.'));
+      tx.onabort = () => reject(tx.error || new Error('Media save was cancelled.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+async function readMediaBlob(id: string): Promise<Blob | null> {
+  const db = await openMediaDatabase();
+  try {
+    return await new Promise<Blob | null>((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE, 'readonly');
+      const request = tx.objectStore(MEDIA_STORE).get(id);
+      request.onsuccess = () => resolve(request.result?.blob || null);
+      request.onerror = () => reject(request.error || new Error('Media could not be read.'));
+      tx.onabort = () => reject(tx.error || new Error('Media read was cancelled.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+async function removeMediaBlob(id: string): Promise<void> {
+  const db = await openMediaDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE, 'readwrite');
+      tx.objectStore(MEDIA_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Media could not be removed.'));
+      tx.onabort = () => reject(tx.error || new Error('Media removal was cancelled.'));
+    });
+  } finally {
+    db.close();
+  }
+}
 function mediaAssetId(reference:string):string|null{return reference.startsWith('media://')?reference.slice(8):null;}
 
 function createId(): string { return `media-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`; }
@@ -31,7 +90,17 @@ function seedAssets(): Asset[] { return [
   { id: 'media-seed-4', name: 'team_collaboration.jpg', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=1200', type: 'image/jpeg', bytes: 1800000, width: 1200, height: 800, uploadedAt: '2026-04-18T09:00:00.000Z', uploader: 'Admin', altText: 'Team collaborating', tags: ['team', 'collaboration'] }
 ]; }
 function normalizeAsset(raw: Partial<Asset>, index: number): Asset { return { id: String(raw.id || `media-migrated-${Date.now()}-${index}`), name: raw.name || 'Untitled asset', url: raw.url || '', type: raw.type || 'image/jpeg', bytes: Number(raw.bytes || 0), width: raw.width ?? null, height: raw.height ?? null, uploadedAt: raw.uploadedAt || new Date().toISOString(), uploader: raw.uploader || 'Current User', altText: raw.altText || '', tags: Array.isArray(raw.tags) ? raw.tags.map(String).filter(Boolean) : [] }; }
-function readAssets(): Asset[] { const saved = localStorage.getItem(STORAGE_KEY); if (!saved) { const seeded = seedAssets(); localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded)); return seeded; } const parsed = JSON.parse(saved); if (!Array.isArray(parsed)) throw new Error('Stored media data is invalid.'); const normalized = parsed.map(normalizeAsset); localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)); return normalized; }
+function readAssets(): Asset[] {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) {
+    const seeded = seedAssets();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+    return seeded;
+  }
+  const parsed = JSON.parse(saved);
+  if (!Array.isArray(parsed)) throw new Error('Stored media data is invalid.');
+  return parsed.map(normalizeAsset);
+}
 function emitMediaEvent(name: string, asset: Asset): void { window.dispatchEvent(new CustomEvent(name, { detail: { assetId: asset.id, name: asset.name, url: asset.url, reference: asset.url, type: asset.type, size: asset.bytes, width: asset.width, height: asset.height, uploader: asset.uploader, uploadedAt: asset.uploadedAt, tags: asset.tags, altText: asset.altText, source: 'cms-vue-media' } })); }
 export default Vue.extend({
   name: 'MediaApp',
@@ -41,7 +110,16 @@ export default Vue.extend({
     imageCount(): number { return this.assets.filter((asset: Asset) => asset.type.startsWith('image/')).length; },
     taggedCount(): number { return this.assets.filter((asset: Asset) => asset.tags.length > 0).length; },
     totalBytes(): number { return this.assets.reduce((total: number, asset: Asset) => total + asset.bytes, 0); },
-    hasFilters(): boolean { return Boolean(this.search || this.typeFilter !== 'all' || this.sortBy !== 'newest'); }
+    hasFilters(): boolean { return Boolean(this.search || this.typeFilter !== 'all' || this.sortBy !== 'newest'); },
+    canManageMedia(): boolean {
+      try {
+        const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+        const role = session && session.user && session.user.role;
+        return role === 'Administrator' || role === 'Editor';
+      } catch {
+        return false;
+      }
+    }
   },
   mounted() { const vm = this as any; void (async () => { try { vm.assets = readAssets(); for (const asset of vm.assets) { const id = mediaAssetId(asset.url); if (id) { const blob = await readMediaBlob(id); if (blob) vm.$set(vm.previewUrls, asset.id, URL.createObjectURL(blob)); else vm.error = 'The original file for ' + asset.name + ' is missing from browser media storage.'; } } } catch { vm.assets = []; vm.error = 'The stored media library could not be read. Existing browser data was not overwritten.'; } finally { vm.loading = false; } })(); },
   beforeDestroy() { Object.values(this.previewUrls).forEach(url => URL.revokeObjectURL(url)); },
@@ -51,7 +129,9 @@ export default Vue.extend({
     formatBytes(bytes: number): string { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`; },
     formatDate(value: string): string { return new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value)); }, notify(message: string): void { this.notice = message; window.setTimeout(() => { this.notice = ''; }, 3000); },
     async handleUpload(event: Event): Promise<void> {
-      const input = event.target as HTMLInputElement; const files = Array.from(input.files || []); if (!files.length) return; let uploaded = 0;
+      const input = event.target as HTMLInputElement;
+      if (!this.canManageMedia) { this.error = 'Only Editors and Administrators can upload media.'; input.value = ''; return; }
+      const files = Array.from(input.files || []); if (!files.length) return; let uploaded = 0;
       for (const file of files) {
         if (!ALLOWED_TYPES.includes(file.type)) { this.error = file.name + ' is not a supported image type.'; continue; }
         if (file.size > MAX_FILE_BYTES) { this.error = file.name + ' exceeds the 5 MB upload limit.'; continue; }
@@ -67,10 +147,20 @@ export default Vue.extend({
       if(uploaded)this.notify(uploaded+(uploaded===1?' asset uploaded.':' assets uploaded.'));input.value='';
     },
     openDetails(asset: Asset): void { this.selectedAsset = asset; this.draftAltText = asset.altText; this.draftTags = asset.tags.join(', '); this.error = ''; }, closeDetails(): void { this.selectedAsset = null; },
-    saveMetadata(): void { if (!this.selectedAsset) return; const tags=Array.from(new Set(this.draftTags.split(',').map((tag:string)=>tag.trim().toLowerCase()).filter(Boolean)));const updated={...this.selectedAsset,altText:this.draftAltText,tags};const previous=this.assets;this.assets=this.assets.map((asset:Asset)=>asset.id===updated.id?updated:asset);if(!this.saveAssets()){this.assets=previous;return;}this.selectedAsset=updated;emitMediaEvent('media:updated',updated);this.notify('Asset metadata saved.');},
+    saveMetadata(): void { if (!this.selectedAsset) return; if (!this.canManageMedia) { this.error = 'Only Editors and Administrators can edit media metadata.'; return; } const tags=Array.from(new Set(this.draftTags.split(',').map((tag:string)=>tag.trim().toLowerCase()).filter(Boolean)));const updated={...this.selectedAsset,altText:this.draftAltText,tags};const previous=this.assets;this.assets=this.assets.map((asset:Asset)=>asset.id===updated.id?updated:asset);if(!this.saveAssets()){this.assets=previous;return;}this.selectedAsset=updated;emitMediaEvent('media:updated',updated);this.notify('Asset metadata saved.');},
     copyReference(): void { if (!this.selectedAsset) return; navigator.clipboard?.writeText(this.selectedAsset.url).then(() => this.notify('Asset reference copied.')).catch(() => { this.error = 'The asset reference could not be copied.'; }); }, selectInput(event: Event): void { (event.target as HTMLInputElement).select(); },
-    selectAsset(asset: Asset): void { const detail={assetId:asset.id,name:asset.name,reference:asset.url,type:asset.type,size:asset.bytes,width:asset.width,height:asset.height,altText:asset.altText,source:'cms-vue-media'};localStorage.setItem('cms_media_selection',JSON.stringify(detail));window.dispatchEvent(new CustomEvent('media:selected',{detail}));this.notify(asset.name+' selected. Return to the editorial editor to apply it.');},
-    requestDelete(asset: Asset): void { this.confirmDelete = asset; }, async deleteAsset():Promise<void>{if(!this.confirmDelete)return;const asset=this.confirmDelete;const previous=this.assets;this.assets=this.assets.filter((item:Asset)=>item.id!==asset.id);if(!this.saveAssets()){this.assets=previous;return;}const id=mediaAssetId(asset.url);try{if(id)await removeMediaBlob(id);}catch{this.assets=previous;this.saveAssets();this.error='The asset could not be removed from media storage.';return;}if(this.previewUrls[asset.id]){URL.revokeObjectURL(this.previewUrls[asset.id]);this.$delete(this.previewUrls,asset.id);}emitMediaEvent('media:deleted',asset);if(this.selectedAsset?.id===asset.id)this.selectedAsset=null;this.confirmDelete=null;this.notify('Asset deleted.');},
+    selectAsset(asset: Asset): void {
+      const detail={assetId:asset.id,name:asset.name,reference:asset.url,type:asset.type,size:asset.bytes,width:asset.width,height:asset.height,altText:asset.altText,source:'cms-vue-media'};
+      try {
+        localStorage.setItem('cms_media_selection',JSON.stringify(detail));
+      } catch {
+        this.error = 'The media selection could not be shared with Editorial because browser storage is unavailable or full.';
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('media:selected',{detail}));
+      this.notify(asset.name+' selected. Return to the editorial editor to apply it.');
+    },
+    requestDelete(asset: Asset): void { if (!this.canManageMedia) { this.error = 'Only Editors and Administrators can delete media.'; return; } this.confirmDelete = asset; }, async deleteAsset():Promise<void>{if(!this.confirmDelete)return;if(!this.canManageMedia){this.error='Only Editors and Administrators can delete media.';this.confirmDelete=null;return;}const asset=this.confirmDelete;const previous=this.assets;this.assets=this.assets.filter((item:Asset)=>item.id!==asset.id);if(!this.saveAssets()){this.assets=previous;return;}const id=mediaAssetId(asset.url);try{if(id)await removeMediaBlob(id);}catch{this.assets=previous;this.saveAssets();this.error='The asset could not be removed from media storage.';return;}if(this.previewUrls[asset.id]){URL.revokeObjectURL(this.previewUrls[asset.id]);this.$delete(this.previewUrls,asset.id);}emitMediaEvent('media:deleted',asset);if(this.selectedAsset?.id===asset.id)this.selectedAsset=null;this.confirmDelete=null;this.notify('Asset deleted.');},
     markPreviewError(id: string): void { this.assets = this.assets.map((asset: Asset) => asset.id === id ? { ...asset, previewError: true } : asset); }
   }
 });
