@@ -106,7 +106,23 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly usersKey = 'cms_users';
   private readonly sessionDuration = 30 * 60 * 1000;
   private expiryTimer: any;
-  private storageHandler = () => this.restoreSession();
+  private storageHandler = (event?: StorageEvent) => {
+    if (!event || event.key === this.storageKey) this.restoreSession();
+    if (event && event.key === this.usersKey) {
+      this.managedUsers = this.readUsers();
+      const managedUser = this.managedUsers.find(user => user.id === this.currentUser?.id);
+      if (managedUser && this.currentUser && managedUser.role !== this.currentUser.role) {
+        const session = this.getSession();
+        if (session) {
+          session.user = { ...session.user, role: managedUser.role };
+          if (this.writeStorage(this.storageKey, JSON.stringify(session))) {
+            this.currentUser = session.user;
+            publishAuthEvent(AUTH_EVENTS.login, session, 'role_changed_in_another_tab');
+          }
+        }
+      }
+    }
+  };
 
   currentUser: CmsUser | null = null;
   email = '';
@@ -158,7 +174,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const user: CmsUser = { id: account.id, name: account.name, email: account.email, role: account.role };
       const now = Date.now();
       const session: CmsSession = { user, issuedAt: now, expiresAt: now + this.sessionDuration };
-      localStorage.setItem(this.storageKey, JSON.stringify(session));
+      if (!this.writeStorage(this.storageKey, JSON.stringify(session))) { this.loading = false; return; }
       this.currentUser = user;
       this.loading = false;
       this.password = '';
@@ -171,7 +187,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   onLogout(): void {
-    localStorage.removeItem(this.storageKey);
+    if (!this.removeStorage(this.storageKey)) return;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.currentUser = null;
     this.expiryLabel = '';
@@ -188,34 +204,60 @@ export class AppComponent implements OnInit, OnDestroy {
     if (user.id === this.currentUser?.id && role !== 'Administrator') {
       this.noticeType = 'error'; this.notice = 'The active Administrator cannot remove their own Administrator role.'; return;
     }
-    user.role = role;
-    localStorage.setItem(this.usersKey, JSON.stringify(this.managedUsers));
+    const previousUsers = this.managedUsers.map(item => ({ ...item }));
+    const updatedUsers = this.managedUsers.map(item => item.id === user.id ? { ...item, role } : item);
+    if (!this.writeStorage(this.usersKey, JSON.stringify(updatedUsers))) return;
+    this.managedUsers = updatedUsers;
     if (user.id === this.currentUser?.id) {
       const session = this.getSession();
-      if (session) { session.user.role = role; localStorage.setItem(this.storageKey, JSON.stringify(session)); this.currentUser = session.user; publishAuthEvent(AUTH_EVENTS.login, session, 'role_changed'); }
+      if (session) {
+        const updatedSession = { ...session, user: { ...session.user, role } };
+        if (!this.writeStorage(this.storageKey, JSON.stringify(updatedSession))) {
+          this.managedUsers = previousUsers;
+          this.writeStorage(this.usersKey, JSON.stringify(previousUsers));
+          return;
+        }
+        this.currentUser = updatedSession.user;
+        publishAuthEvent(AUTH_EVENTS.login, updatedSession, 'role_changed');
+      }
     }
-    this.noticeType = 'success'; this.notice = `${user.name} is now a ${role}.`;
+    this.noticeType = 'success'; this.notice = user.name + ' is now a ' + role + '.';
   }
 
   private restoreSession(): void {
-    const raw = localStorage.getItem(this.storageKey);
-    if (!raw) { this.currentUser = null; return; }
+    const raw = this.readStorage(this.storageKey);
+    if (raw === undefined) return;
+    if (!raw) {
+      if (this.expiryTimer) clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+      this.currentUser = null;
+      this.expiryLabel = '';
+      return;
+    }
     try {
       const session: CmsSession = JSON.parse(raw);
-      if (!session.user || !session.user.id || !session.expiresAt || session.expiresAt <= Date.now() || !ROLE_PERMISSIONS[session.user.role]) {
-        localStorage.removeItem(this.storageKey);
+      const expiresAt = Number(session && session.expiresAt);
+      if (!session || !session.user || typeof session.user.id !== 'string' || !session.user.id.trim() ||
+          !Number.isFinite(expiresAt) || expiresAt <= Date.now() || !ROLE_PERMISSIONS[session.user.role]) {
+        this.removeStorage(this.storageKey);
+        if (this.expiryTimer) clearTimeout(this.expiryTimer);
+        this.expiryTimer = null;
         this.currentUser = null;
+        this.expiryLabel = '';
         publishAuthEvent(AUTH_EVENTS.expired, null, 'invalid_or_expired_session');
         this.noticeType = 'error'; this.notice = 'Your session is no longer valid. Please sign in again.';
         return;
       }
       this.currentUser = session.user;
       this.managedUsers = this.readUsers();
-      this.scheduleExpiry(session.expiresAt);
+      this.scheduleExpiry(expiresAt);
       publishAuthEvent(AUTH_EVENTS.login, session, 'session_restored');
     } catch (_) {
-      localStorage.removeItem(this.storageKey);
+      this.removeStorage(this.storageKey);
+      if (this.expiryTimer) clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
       this.currentUser = null;
+      this.expiryLabel = '';
       publishAuthEvent(AUTH_EVENTS.expired, null, 'corrupt_session');
       this.noticeType = 'error'; this.notice = 'The saved session was invalid and has been cleared. Please sign in again.';
     }
@@ -230,7 +272,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private updateExpiryLabel(expiresAt: number): void { this.expiryLabel = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
   private expireSession(): void {
-    localStorage.removeItem(this.storageKey);
+    this.removeStorage(this.storageKey);
     this.currentUser = null;
     this.expiryLabel = '';
     publishAuthEvent(AUTH_EVENTS.expired, null, 'session_timeout');
@@ -238,16 +280,45 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private seedUsers(): void {
-    if (!localStorage.getItem(this.usersKey)) {
-      localStorage.setItem(this.usersKey, JSON.stringify(this.demoAccounts.map(({ password, ...user }) => user)));
-    }
+    const existing = this.readStorage(this.usersKey);
+    if (existing === undefined || existing !== null) return;
+    this.writeStorage(this.usersKey, JSON.stringify(this.demoAccounts.map(({ password, ...user }) => user)));
   }
 
   private readUsers(): CmsUser[] {
-    try { const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]'); return Array.isArray(users) ? users : []; } catch (_) { return []; }
+    const raw = this.readStorage(this.usersKey);
+    if (raw === undefined || raw === null) return [];
+    try {
+      const users = JSON.parse(raw);
+      if (Array.isArray(users)) return users;
+      this.showStorageError('read');
+      return [];
+    } catch (_) {
+      this.showStorageError('read');
+      return [];
+    }
   }
 
   private getSession(): CmsSession | null {
-    try { const session = JSON.parse(localStorage.getItem(this.storageKey) || 'null'); return session; } catch (_) { return null; }
+    const raw = this.readStorage(this.storageKey);
+    if (!raw || raw === undefined) return null;
+    try { return JSON.parse(raw) as CmsSession; } catch (_) { return null; }
+  }
+
+  private readStorage(key: string): string | null | undefined {
+    try { return localStorage.getItem(key); } catch (_) { this.showStorageError('read'); return undefined; }
+  }
+
+  private writeStorage(key: string, value: string): boolean {
+    try { localStorage.setItem(key, value); return true; } catch (_) { this.showStorageError('save'); return false; }
+  }
+
+  private removeStorage(key: string): boolean {
+    try { localStorage.removeItem(key); return true; } catch (_) { this.showStorageError('update'); return false; }
+  }
+
+  private showStorageError(operation: string): void {
+    this.noticeType = 'error';
+    this.notice = 'Browser storage could not ' + operation + ' your CMS data. Check browser storage availability and quota, then retry.';
   }
 }
