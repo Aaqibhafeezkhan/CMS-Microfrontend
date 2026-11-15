@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { canPerformArticleTransition, isValidArticleTransition } from './article-workflow';
 import { useEffect, useMemo, useState } from 'react';
 
 type Status = 'Draft' | 'Review' | 'Published' | 'Archived';
@@ -366,13 +367,14 @@ export function EditorialApp(): React.ReactElement {
     const article = sourceArticle || activeArticle;
     if (!article) return false;
     const current = article.status;
-    const valid = (current === 'Draft' && target === 'Review') ||
-      (current === 'Review' && (target === 'Draft' || target === 'Published')) ||
-      (current === 'Published' && (target === 'Draft' || target === 'Archived')) ||
-      (current === 'Archived' && target === 'Draft');
-    if (!valid) { setError(`Cannot move ${current} to ${target}.`); return false; }
-    const permission = target === 'Review' ? 'review' : target === 'Published' ? 'publish' : target === 'Archived' ? 'archive' : 'edit';
-    if (!can(role, permission)) { setError('Your role does not have permission for this workflow action.'); return false; }
+    if (!isValidArticleTransition(current, target)) {
+      setError(`Cannot move ${current} to ${target}.`);
+      return false;
+    }
+    if (!canPerformArticleTransition(role, current, target)) {
+      setError('Your role does not have permission for this workflow action.');
+      return false;
+    }
     const now = new Date().toISOString();
     const updated = { ...article, status: target, updatedAt: now, revision: article.revision + 1, revisions: [...article.revisions, { version: article.revision + 1, updatedAt: now, editor: getSession().name, summary: `Status changed from ${current} to ${target}` }] };
     if (!persist(articles.map(item => item.id === updated.id ? updated : item))) return false;
