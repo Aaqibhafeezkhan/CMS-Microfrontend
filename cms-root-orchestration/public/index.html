@@ -115,7 +115,7 @@
           <a href="/cms-root-orchestration/auth" class="module-card">
             <div style="font-size: 2.5rem; margin-bottom: 2rem;">🔐</div>
             <h3 class="module-title">Identity & Access</h3>
-            <p class="module-desc">Enterprise-grade security and granular role management built with Angular.</p>
+            <p class="module-desc">Client-side demo sign-in, sessions, and role management built with Angular.</p>
             <span class="module-tag" style="background: #fff1f2; color: #e11d48; border-color: #fecdd3;">Angular 11</span>
           </a>
 
@@ -129,7 +129,7 @@
           <a href="/cms-root-orchestration/collab" class="module-card">
             <div style="font-size: 2.5rem; margin-bottom: 2rem;">💬</div>
             <h3 class="module-title">Team Collaboration</h3>
-            <p class="module-desc">Real-time communication and activity tracking engine utilizing Svelte.</p>
+            <p class="module-desc">Article discussions, comments, and a browser-based CMS activity stream.</p>
             <span class="module-tag" style="background: #fef2f2; color: #ef4444; border-color: #fee2e2;">Svelte 3</span>
           </a>
 
@@ -201,24 +201,33 @@
 
     // Session Monitoring
     function updateSessionUI() {
-      const session = localStorage.getItem('cms_session');
       const dot = document.getElementById('session-dot');
       const text = document.getElementById('session-text');
       const sideName = document.querySelector('.user-name');
+      const sideRole = document.querySelector('.user-role');
+      let session = null;
+      let storageUnavailable = false;
 
-      if (session) {
-        try {
-          const user = JSON.parse(session);
-          if (dot) dot.style.background = '#10b981';
-          if (text) text.innerText = `Active Session: ${user.name} (${user.role})`;
-          if (sideName) sideName.innerText = user.name;
-        } catch(e) {
-          localStorage.removeItem('cms_session');
-        }
+      try {
+        const raw = localStorage.getItem('cms_session');
+        session = raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        storageUnavailable = true;
+      }
+
+      const user = session && session.user;
+      if (user && user.id && user.role) {
+        if (dot) dot.style.background = '#10b981';
+        if (text) text.textContent = 'Active Session: ' + (user.name || user.email || 'Demo user') + ' (' + user.role + ')';
+        if (sideName) sideName.textContent = user.name || user.email || 'Demo user';
+        if (sideRole) sideRole.textContent = user.role;
       } else {
-        if (dot) dot.style.background = '#94a3b8';
-        if (text) text.innerText = 'Platform secured · Please sign in to access modules';
-        if (sideName) sideName.innerText = 'Guest User';
+        if (dot) dot.style.background = storageUnavailable ? '#f59e0b' : '#94a3b8';
+        if (text) text.textContent = storageUnavailable
+          ? 'Browser storage is unavailable · Session state cannot be read'
+          : 'Demo workspace · Sign in to access protected modules';
+        if (sideName) sideName.textContent = storageUnavailable ? 'Storage unavailable' : 'Guest User';
+        if (sideRole) sideRole.textContent = storageUnavailable ? 'Session status unknown' : 'Not signed in';
       }
     }
 
@@ -226,11 +235,20 @@
     function toggleSidebar() {
       const appShell = document.getElementById('app-shell');
       appShell.classList.toggle('sidebar-collapsed');
-      localStorage.setItem('cms_sidebar_collapsed', appShell.classList.contains('sidebar-collapsed'));
+      try {
+        localStorage.setItem('cms_sidebar_collapsed', appShell.classList.contains('sidebar-collapsed'));
+      } catch (_) {
+        // The visual toggle still works when browser storage is disabled.
+      }
     }
 
-    // Restore sidebar state
-    const sidebarCollapsed = localStorage.getItem('cms_sidebar_collapsed') === 'true';
+    // Restore sidebar state without making application startup depend on storage.
+    let sidebarCollapsed = false;
+    try {
+      sidebarCollapsed = localStorage.getItem('cms_sidebar_collapsed') === 'true';
+    } catch (_) {
+      sidebarCollapsed = false;
+    }
     if (sidebarCollapsed) {
       document.getElementById('app-shell').classList.add('sidebar-collapsed');
     }
@@ -252,8 +270,9 @@
       if (overlay) overlay.classList.remove('active');
     });
 
-    window.addEventListener('cms:auth_change', updateSessionUI);
-    window.addEventListener('storage', updateSessionUI);
+    ['cms:auth_change', 'cms:auth:login', 'cms:auth:logout', 'cms:auth:expired', 'auth:login', 'auth:logout', 'storage'].forEach(eventName => {
+      window.addEventListener(eventName, updateSessionUI);
+    });
     
     // Initial Sync
     syncSidebarUI();

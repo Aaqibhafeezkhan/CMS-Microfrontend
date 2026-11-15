@@ -1,27 +1,24 @@
-# cms-svelte-collab
+# CMS Ultra — Svelte Collaboration
 
-Svelte 3 + TypeScript microfrontend for real-time team collaboration in the CMS Ultra platform.
+Svelte 3 + TypeScript microfrontend for article-linked discussions and browser-based CMS activity.
 
-## Features
+## Capabilities
 
-- 💬 Team chat with message threading and user avatars
-- 📊 Activity feed tracking all platform actions across modules
-- 👥 Online presence indicators
+- Select articles from the shared `cms_articles` collection.
+- Create, edit, delete, resolve and reopen article comments.
+- Recognize and suggest demo-user mentions.
+- Filter the activity feed by article, actor and event type.
+- Refresh shared collections from same-tab CMS events and cross-tab storage changes.
+- Surface comment/activity persistence errors without pretending a failed write succeeded.
 
-## Live Demo
+Comments and activity are stored in `cms_collaboration_comments` and `cms_collaboration_activity`. This is a browser-local collaboration demonstration, not server-backed real-time messaging, multi-user presence or synchronized concurrent editing.
 
-🌐 **Standalone:** https://AaqibhafeezKhan.github.io/cms-svelte-collab  
-🌐 **In Shell:** https://AaqibhafeezKhan.github.io/cms-root-orchestration/collab
-
-## Local Development
-
-```bash
-npm install
-npm start   # → http://localhost:8083
-```
-
-## Build
+## Local development and build
 
 ```bash
-npm run build   # outputs dist/main.js as SystemJS module
+npm ci --legacy-peer-deps
+npm start
+npm run build
 ```
+
+The development server uses port `8083`. The production output is `dist/main.js`, a SystemJS-compatible bundle.

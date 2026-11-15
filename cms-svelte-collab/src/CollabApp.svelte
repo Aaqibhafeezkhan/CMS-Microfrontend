@@ -115,29 +115,40 @@
   }
 
   function readComments(): Comment[] {
-    try {
-      const raw = JSON.parse(localStorage.getItem(COMMENTS_KEY) || '[]');
-      return Array.isArray(raw) ? raw : [];
-    } catch {
-      return [];
-    }
+    const raw = localStorage.getItem(COMMENTS_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Stored comment data is invalid.');
+    return parsed;
   }
 
   function readActivities(): Activity[] {
+    const raw = localStorage.getItem(ACTIVITY_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Stored activity data is invalid.');
+    return parsed;
+  }
+
+  function persistComments(next: Comment[]): boolean {
     try {
-      const raw = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]');
-      return Array.isArray(raw) ? raw : [];
+      localStorage.setItem(COMMENTS_KEY, JSON.stringify(next));
+      error = '';
+      return true;
     } catch {
-      return [];
+      error = 'Comments could not be saved. Browser storage may be unavailable or full. Your existing discussion has been preserved.';
+      return false;
     }
   }
 
-  function persistComments() {
-    localStorage.setItem(COMMENTS_KEY, JSON.stringify(comments));
-  }
-
-  function persistActivities() {
-    localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 200)));
+  function persistActivities(next: Activity[]): boolean {
+    try {
+      localStorage.setItem(ACTIVITY_KEY, JSON.stringify(next.slice(0, 200)));
+      return true;
+    } catch {
+      error = 'Activity could not be saved because browser storage is unavailable or full.';
+      return false;
+    }
   }
 
   function createId(prefix: string) {
@@ -158,8 +169,8 @@
       timestamp: (detail.timestamp as string) || new Date().toISOString(),
       detail: (detail.detail as string) || formatEvent(type, detail)
     };
-    activities = [activity, ...activities].slice(0, 200);
-    persistActivities();
+    const next = [activity, ...activities].slice(0, 200);
+    if (persistActivities(next)) activities = next;
   }
 
   function formatEvent(type: ActivityType, detail: Record<string, unknown>) {
@@ -198,13 +209,17 @@
   }
 
   function handleStorage(event: StorageEvent) {
-    if (event.key === COMMENTS_KEY) comments = readComments();
-    if (event.key === ACTIVITY_KEY) activities = readActivities();
-    if (event.key === ARTICLES_KEY) {
-      articles = readArticles();
-      if (!articles.some(article => article.id === selectedArticleId)) selectedArticleId = articles[0]?.id || '';
+    try {
+      if (event.key === COMMENTS_KEY) comments = readComments();
+      if (event.key === ACTIVITY_KEY) activities = readActivities();
+      if (event.key === ARTICLES_KEY) {
+        articles = readArticles();
+        if (!articles.some(article => article.id === selectedArticleId)) selectedArticleId = articles[0]?.id || '';
+      }
+      if (event.key === SESSION_KEY) currentUser = readSession();
+    } catch {
+      error = 'A browser storage update could not be loaded. Existing discussion data remains unchanged in this tab.';
     }
-    if (event.key === SESSION_KEY) currentUser = readSession();
   }
 
   function selectArticle(id: string) {
@@ -250,9 +265,9 @@
       resolved: false,
       mentions: extractMentions(newComment)
     };
-    comments = [...comments, comment];
-    persistComments();
-    addActivity('comment:created', { articleId: article.id, articleTitle: article.title, actor: currentUser.name, timestamp: comment.createdAt });
+    const nextComments = [...comments, comment];
+    if (!persistComments(nextComments)) return;
+    comments = nextComments;
     emit('comment:created', { commentId: comment.id, articleId: article.id, articleTitle: article.title, actor: currentUser.name, createdAt: comment.createdAt });
     newComment = '';
     mentionOpen = false;
@@ -266,25 +281,27 @@
 
   function saveEdit(comment: Comment) {
     if (!canModerate(comment) || !editingBody.trim()) return;
-    comments = comments.map(item => item.id === comment.id ? { ...item, body: editingBody.trim(), updatedAt: new Date().toISOString(), mentions: extractMentions(editingBody) } : item);
-    persistComments();
+    const nextComments = comments.map(item => item.id === comment.id ? { ...item, body: editingBody.trim(), updatedAt: new Date().toISOString(), mentions: extractMentions(editingBody) } : item);
+    if (!persistComments(nextComments)) return;
+    comments = nextComments;
     editingId = '';
     editingBody = '';
   }
 
   function deleteComment(comment: Comment) {
     if (!canModerate(comment)) return;
-    comments = comments.filter(item => item.id !== comment.id);
-    persistComments();
+    const nextComments = comments.filter(item => item.id !== comment.id);
+    if (!persistComments(nextComments)) return;
+    comments = nextComments;
   }
 
   function toggleResolved(comment: Comment) {
     if (!canModerate(comment)) return;
     const resolved = !comment.resolved;
-    comments = comments.map(item => item.id === comment.id ? { ...item, resolved } : item);
-    persistComments();
+    const nextComments = comments.map(item => item.id === comment.id ? { ...item, resolved } : item);
+    if (!persistComments(nextComments)) return;
+    comments = nextComments;
     if (resolved) {
-      addActivity('comment:resolved', { articleId: comment.articleId, articleTitle: comment.articleTitle, actor: currentUser.name, timestamp: new Date().toISOString() });
       emit('comment:resolved', { commentId: comment.id, articleId: comment.articleId, articleTitle: comment.articleTitle, actor: currentUser.name });
     }
   }

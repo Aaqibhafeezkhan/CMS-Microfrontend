@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { canPerformArticleTransition, isValidArticleTransition } from './article-workflow';
 import { useEffect, useMemo, useState } from 'react';
 
 type Status = 'Draft' | 'Review' | 'Published' | 'Archived';
@@ -76,14 +77,17 @@ function parseList(value: string): string[] {
 
 function getSession(): { name: string; role: string } {
   try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
-    const user = session.user || {};
-    return {
-      name: user.name || user.email || session.name || 'Current User',
-      role: user.role || session.role || 'Contributor'
-    };
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    const user = session && session.user;
+    const expiresAt = Number(session && session.expiresAt);
+    const allowedRoles = ['Administrator', 'Editor', 'Contributor'];
+    if (!user || typeof user.id !== 'string' || !user.id.trim() ||
+        allowedRoles.indexOf(user.role) < 0 || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return { name: 'Current User', role: 'Guest' };
+    }
+    return { name: user.name || user.email || 'Current User', role: user.role };
   } catch {
-    return { name: 'Current User', role: 'Contributor' };
+    return { name: 'Current User', role: 'Guest' };
   }
 }
 
@@ -160,7 +164,7 @@ function emitArticleEvent(type: string, article: Article, previousStatus?: Statu
 function can(role: string, permission: 'create' | 'edit' | 'review' | 'publish' | 'delete' | 'archive'): boolean {
   if (role === 'Administrator') return true;
   if (role === 'Editor') return true;
-  return permission === 'create' || permission === 'edit';
+  return role === 'Contributor' && (permission === 'create' || permission === 'edit');
 }
 
 export function EditorialApp(): React.ReactElement {
@@ -184,8 +188,11 @@ export function EditorialApp(): React.ReactElement {
   const [pendingMediaSelection,setPendingMediaSelection]=useState<any>(null);
 
   useEffect(() => {
-    const session = getSession();
-    setRole(session.role);
+    const syncRole = () => setRole(getSession().role);
+    syncRole();
+    window.addEventListener('storage', syncRole);
+    window.addEventListener('auth:login', syncRole);
+    window.addEventListener('auth:logout', syncRole);
     try {
       setArticles(readArticles());
     } catch {
@@ -193,6 +200,26 @@ export function EditorialApp(): React.ReactElement {
     } finally {
       setLoading(false);
     }
+    return () => {
+      window.removeEventListener('storage', syncRole);
+      window.removeEventListener('auth:login', syncRole);
+      window.removeEventListener('auth:logout', syncRole);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleArticleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      try {
+        const latest = readArticles();
+        setArticles(latest);
+        setActiveArticle(current => current ? latest.find(article => article.id === current.id) || null : null);
+      } catch {
+        setError('Articles changed in another tab, but the updated list could not be loaded. Your current editor contents remain available.');
+      }
+    };
+    window.addEventListener('storage', handleArticleStorage);
+    return () => window.removeEventListener('storage', handleArticleStorage);
   }, []);
 
   useEffect(() => {
@@ -234,14 +261,15 @@ export function EditorialApp(): React.ReactElement {
     });
   }, [articles, search, statusFilter, authorFilter, tagFilter, sortField, sortAscending]);
 
-  const persist = (next: Article[]) => {
+  const persist = (next: Article[]): boolean => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setArticles(next);
       setError('');
+      return true;
     } catch {
-      setError('Changes could not be saved. Browser storage may be unavailable or full.');
-      throw new Error('Persistence failed');
+      setError('Changes could not be saved. Browser storage may be unavailable or full. Your current editor contents have been preserved.');
+      return false;
     }
   };
 
@@ -289,9 +317,10 @@ export function EditorialApp(): React.ReactElement {
     return '';
   };
 
-  const saveDraft = () => {
+  const saveDraft = (): Article | null => {
     const validation = validateEditor();
-    if (validation) { setError(validation); return; }
+    if (validation) { setError(validation); return null; }
+    if (!can(role, activeArticle ? 'edit' : 'create')) { setError('Your role does not have permission to save this article.'); return null; }
     const now = new Date().toISOString();
     const session = getSession();
     const slug = editor.slug.trim() || slugify(editor.title);
@@ -309,12 +338,13 @@ export function EditorialApp(): React.ReactElement {
         revision: activeArticle.revision + 1,
         revisions: [...activeArticle.revisions, { version: activeArticle.revision + 1, updatedAt: now, editor: session.name, summary: 'Editorial content updated' }]
       };
-      persist(articles.map(article => article.id === activeArticle.id ? updated : article));
+      if (!persist(articles.map(article => article.id === activeArticle.id ? updated : article))) return null;
       emitArticleEvent('updated', updated);
       setActiveArticle(updated);
       setOriginalEditor({ ...editor, slug });
       setEditor({ ...editor, slug });
       setMessage('Draft saved.');
+      return updated;
     } else {
       const created: Article = {
         id: createId(),
@@ -332,40 +362,45 @@ export function EditorialApp(): React.ReactElement {
         revision: 1,
         revisions: [{ version: 1, updatedAt: now, editor: session.name, summary: 'Article created' }]
       };
-      persist([created, ...articles]);
+      if (!persist([created, ...articles])) return null;
       emitArticleEvent('created', created);
       setActiveArticle(created);
       setOriginalEditor(toEditorState(created));
       setEditor(toEditorState(created));
       setMessage('Draft created.');
+      return created;
     }
     setError('');
+    return activeArticle || null;
   };
 
-  const transition = (target: Status) => {
-    if (!activeArticle) return;
-    const current = activeArticle.status;
-    const valid = (current === 'Draft' && target === 'Review') ||
-      (current === 'Review' && (target === 'Draft' || target === 'Published')) ||
-      (current === 'Published' && (target === 'Draft' || target === 'Archived')) ||
-      (current === 'Archived' && target === 'Draft');
-    if (!valid) { setError(`Cannot move ${current} to ${target}.`); return; }
-    const permission = target === 'Review' ? 'review' : target === 'Published' ? 'publish' : target === 'Archived' ? 'archive' : 'edit';
-    if (!can(role, permission)) { setError('Your role does not have permission for this workflow action.'); return; }
+  const transition = (target: Status, sourceArticle?: Article): boolean => {
+    const article = sourceArticle || activeArticle;
+    if (!article) return false;
+    const current = article.status;
+    if (!isValidArticleTransition(current, target)) {
+      setError(`Cannot move ${current} to ${target}.`);
+      return false;
+    }
+    if (!canPerformArticleTransition(role, current, target)) {
+      setError('Your role does not have permission for this workflow action.');
+      return false;
+    }
     const now = new Date().toISOString();
-    const updated = { ...activeArticle, status: target, updatedAt: now, revision: activeArticle.revision + 1, revisions: [...activeArticle.revisions, { version: activeArticle.revision + 1, updatedAt: now, editor: getSession().name, summary: `Status changed from ${current} to ${target}` }] };
-    persist(articles.map(article => article.id === updated.id ? updated : article));
+    const updated = { ...article, status: target, updatedAt: now, revision: article.revision + 1, revisions: [...article.revisions, { version: article.revision + 1, updatedAt: now, editor: getSession().name, summary: `Status changed from ${current} to ${target}` }] };
+    if (!persist(articles.map(item => item.id === updated.id ? updated : item))) return false;
     emitArticleEvent('status', updated, current);
     if (target === 'Published') emitArticleEvent('published', updated, current);
     setActiveArticle(updated);
     setMessage(target === 'Published' ? 'Article published.' : `Article moved to ${target}.`);
     setError('');
+    return true;
   };
 
   const deleteArticle = (article: Article) => {
     if (!can(role, 'delete')) { setError('Your role does not have permission to delete articles.'); return; }
     setConfirmAction(() => () => {
-      persist(articles.filter(item => item.id !== article.id));
+      if (!persist(articles.filter(item => item.id !== article.id))) return;
       emitArticleEvent('deleted', article);
       if (activeArticle?.id === article.id) { setView('list'); setActiveArticle(null); }
       setMessage('Article deleted.');
@@ -387,16 +422,16 @@ export function EditorialApp(): React.ReactElement {
       revision: 1,
       revisions: [{ version: 1, updatedAt: now, editor: getSession().name, summary: `Duplicated from ${article.id}` }]
     };
-    persist([duplicate, ...articles]);
+    if (!persist([duplicate, ...articles])) return;
     emitArticleEvent('created', duplicate);
     setMessage('Article duplicated as a new draft.');
   };
 
   const renderStatusActions = (article: Article) => {
-    if (article.status === 'Draft') return <button onClick={() => { setActiveArticle(article); transition('Review'); }}>Submit for review</button>;
-    if (article.status === 'Review') return <React.Fragment><button onClick={() => { setActiveArticle(article); transition('Published'); }}>Approve & publish</button><button onClick={() => { setActiveArticle(article); transition('Draft'); }}>Reject</button></React.Fragment>;
-    if (article.status === 'Published') return <React.Fragment><button onClick={() => { setActiveArticle(article); transition('Draft'); }}>Unpublish</button><button onClick={() => { setActiveArticle(article); transition('Archived'); }}>Archive</button></React.Fragment>;
-    return <button onClick={() => { setActiveArticle(article); transition('Draft'); }}>Restore</button>;
+    if (article.status === 'Draft') return <button onClick={() => { transition('Review', article); }}>Submit for review</button>;
+    if (article.status === 'Review') return <React.Fragment><button onClick={() => { transition('Published', article); }}>Approve & publish</button><button onClick={() => { transition('Draft', article); }}>Reject</button></React.Fragment>;
+    if (article.status === 'Published') return <React.Fragment><button onClick={() => { transition('Draft', article); }}>Unpublish</button><button onClick={() => { transition('Archived', article); }}>Archive</button></React.Fragment>;
+    return <button onClick={() => { transition('Draft', article); }}>Restore</button>;
   };
 
   const openPreview = (article: Article) => {
@@ -501,7 +536,7 @@ export function EditorialApp(): React.ReactElement {
           </div>
           <label style={{ marginTop: '1rem' }}>Body content<textarea value={editor.body} onChange={event => setEditor({ ...editor, body: event.target.value })} placeholder="Write the article…" /></label>
           <div className="editor-actions" style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
-            <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}><button onClick={saveDraft} disabled={!can(role, activeArticle ? 'edit' : 'create')}>Save draft</button>{activeArticle && activeArticle.status === 'Draft' && <button onClick={() => { saveDraft(); transition('Review'); }}>Submit for review</button>}<button onClick={() => activeArticle ? openPreview({ ...activeArticle, ...{ title: editor.title, body: editor.body, excerpt: editor.excerpt, slug: editor.slug || slugify(editor.title), tags: parseList(editor.tags), categories: parseList(editor.categories), coverMediaReference: editor.coverMediaReference } }) : setError('Save the draft before previewing it.')}>Preview</button></div>
+            <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}><button onClick={saveDraft} disabled={!can(role, activeArticle ? 'edit' : 'create')}>Save draft</button>{activeArticle && activeArticle.status === 'Draft' && <button onClick={() => { const saved = saveDraft(); if (saved) transition('Review', saved); }}>Submit for review</button>}<button onClick={() => activeArticle ? openPreview({ ...activeArticle, ...{ title: editor.title, body: editor.body, excerpt: editor.excerpt, slug: editor.slug || slugify(editor.title), tags: parseList(editor.tags), categories: parseList(editor.categories), coverMediaReference: editor.coverMediaReference } }) : setError('Save the draft before previewing it.')}>Preview</button></div>
             <button className="primary-action" onClick={saveDraft} disabled={!can(role, activeArticle ? 'edit' : 'create')}>Save changes</button>
           </div>
         </section>

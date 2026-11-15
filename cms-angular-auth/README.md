@@ -1,29 +1,25 @@
-# cms-angular-auth
+# CMS Ultra — Angular Auth
 
-Angular 11 microfrontend for authentication and role-based access control in the CMS Ultra platform.
+Angular 11 microfrontend for the browser-only demo identity and role-management experience.
 
-## Features
+## Capabilities
 
-- 🔐 Sign-in form with email/password and validation
-- 👥 Role management dashboard (Admin, Editor, Contributor, Viewer)
-- 🛡️ Security info cards (SSO, audit logs, enterprise features)
+- Fake demo sign-in with in-app account shortcuts.
+- 30-minute browser-persisted sessions.
+- Administrator, Editor and Contributor role assignments.
+- Session restore, expiry, logout and cross-tab role/session updates.
+- Role permission summary and administrator-only user/role controls.
 
-## Live Demo
+## Demo limitations
 
-🌐 **Standalone:** https://AaqibhafeezKhan.github.io/cms-angular-auth  
-🌐 **In Shell:** https://AaqibhafeezKhan.github.io/cms-root-orchestration/auth
+This is not an identity provider. Demo credentials are intentionally fake, passwords are not written to `cms_users`, and all authorization checks run in the browser. Do not use real passwords or real user information.
 
-## Local Development
-
-```bash
-npm install
-npm start   # → http://localhost:8084
-```
-
-## Build
+## Local development and build
 
 ```bash
-npm run build   # outputs dist/main.js as SystemJS module
+npm ci --legacy-peer-deps
+npm start
+npm run build
 ```
 
-> Uses webpack + ts-loader directly (no Angular CLI). Angular JIT compilation via `@angular/platform-browser-dynamic`.
+The development server uses port `8084`. The production output is `dist/main.js`, a SystemJS-compatible module consumed by the root single-spa shell.
